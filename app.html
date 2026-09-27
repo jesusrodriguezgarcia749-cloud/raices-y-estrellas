@@ -1,8 +1,41 @@
 <!DOCTYPE html>
-<html lang="es-MX"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow"><title>Acceso docentes | Raíces y Estrellas</title>
-<link rel="stylesheet" href="estilos.css"></head>
-<body class="home"><main class="hero" style="min-height:100vh;display:grid;place-items:center;text-align:center">
-<div class="ancho"><h1 style="font-size:clamp(2.4rem,7vw,4rem)">Raíces y Estrellas</h1>
-<p class="lema" style="margin:0 auto 1.5rem">La plataforma de calificación para docentes y directivos estará disponible muy pronto.</p>
-<a class="btn oro" href="./">Volver al inicio</a></div></main></body></html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#16213f">
+<title>Plataforma docente | Raíces y Estrellas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%A8%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@400;700;800&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="cab">
+  <a class="marca" href="./">Raíces y Estrellas</a>
+  <div id="cab-usuario" class="cab-usuario" hidden>
+    <span id="cab-nombre"></span>
+    <button type="button" id="btn-salir" class="btn-texto">Cerrar sesión</button>
+  </div>
+</header>
+
+<div id="red" class="red" hidden>Sin conexión. Los cambios se guardan en este teléfono y se enviarán al volver la señal.</div>
+
+<main id="vista" class="vista">
+  <div class="cargando" role="status">Cargando…</div>
+</main>
+
+<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-tit">
+  <div class="modal-caja">
+    <div class="modal-cab"><h2 id="modal-tit"></h2><button type="button" class="modal-cerrar" aria-label="Cerrar">×</button></div>
+    <div id="modal-cuerpo" class="modal-cuerpo"></div>
+  </div>
+</div>
+<div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
+
+<script src="datos-lecturas.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
