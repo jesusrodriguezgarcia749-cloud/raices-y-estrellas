@@ -33,7 +33,28 @@
   </div>
 </div>
 <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
+<div id="impresion" class="impresion" aria-hidden="true"></div>
 
+<script>
+/* Diagnóstico: si algo impide arrancar, lo muestra en pantalla en lugar de quedarse en "Cargando…". */
+(function(){
+  var errores=[];
+  window.addEventListener('error',function(e){ errores.push((e.message||'Error')+(e.filename?' ('+e.filename.split('/').pop()+':'+e.lineno+')':'')); },true);
+  window.addEventListener('unhandledrejection',function(e){ errores.push('Promesa: '+(e.reason&&e.reason.message||e.reason)); });
+  setTimeout(function(){
+    var v=document.getElementById('vista');
+    if(!v||!v.querySelector('.cargando')) return;
+    var fila=function(ok,t){return '<li style="margin:.3rem 0">'+(ok?'✅ ':'❌ ')+t+'</li>';};
+    v.innerHTML='<div class="tarjeta"><h2>La plataforma no pudo arrancar</h2><p>Toma captura de esta pantalla y envíala.</p><ul style="list-style:none;padding:0">'
+      +fila(navigator.onLine,'Conexión a internet')
+      +fila(typeof LECTURAS!=='undefined'&&LECTURAS.length===90,'Archivo datos-lecturas.js'+(typeof LECTURAS!=='undefined'?' ('+LECTURAS.length+' lecturas)':''))
+      +fila(typeof ExcelJS!=='undefined','Librería de Excel')
+      +fila(!!window.__rye_modulo,'Archivo app.js')
+      +'</ul>'+(errores.length?'<p><b>Errores:</b></p><pre style="white-space:pre-wrap;font-size:.85rem">'+errores.join('\n').replace(/</g,'&lt;')+'</pre>':'')
+      +'<button class="btn" onclick="location.reload()">Reintentar</button></div>';
+  },12000);
+})();
+</script>
 <script src="datos-lecturas.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script type="module" src="app.js"></script>
