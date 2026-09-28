@@ -122,7 +122,7 @@ td.acc{white-space:nowrap;text-align:right}
 .marca{white-space:nowrap}
 .cab-usuario{min-width:0}
 #cab-nombre{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38vw}
-@media (max-width:480px){.marca{font-size:1.1rem}.cab-usuario{font-size:.85rem;gap:.4rem}.pestanas button{padding:.4rem .85rem;font-size:.95rem}}
+@media (max-width:480px){.marca{font-size:1.1rem}.cab-usuario{font-size:.85rem;gap:.4rem}.pestanas button{padding:.4rem .75rem;font-size:.93rem}}
 .btn-texto.oscuro{color:var(--noche);font-weight:700}
 
 /* ---------- Inicio docente ---------- */
@@ -214,3 +214,58 @@ td.acc{white-space:nowrap;text-align:right}
 .apl .btn{width:100%;white-space:nowrap;font-size:.9rem;padding-inline:.5rem}
 .tira{scroll-margin-top:70px}
 .vista{overflow-x:hidden}
+
+/* ---------- Aplicación compacta ---------- */
+.grupos-apl{grid-template-columns:1fr;gap:.45rem}
+.apl{grid-template-columns:1fr auto;align-items:center;padding:.6rem .8rem}
+.apl>div:first-child{display:grid}
+.apl .fila-btn{display:flex;gap:.4rem}
+.apl .btn{width:auto;min-width:78px}
+.ancho-total{width:100%;margin:0 0 1rem}
+
+/* ---------- Tablero ---------- */
+.tab-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:.8rem;flex-wrap:wrap}
+.tab-cab h2{margin-bottom:.3em}
+.periodo{display:grid;gap:.35rem;margin:.4rem 0 .5rem}
+.periodo label{font-weight:700;font-size:.95rem}
+.periodo-campos{display:flex;flex-wrap:wrap;gap:.5rem}
+.periodo select,.periodo input{min-height:44px;padding:.4rem .7rem;border-radius:12px;border:1.5px solid #CDBB98;background:#fff;flex:1 1 140px;min-width:0}
+.buscar-al{position:relative;margin-top:.6rem}
+.buscar-al .buscar{width:100%}
+.resultados{display:grid;gap:.3rem;margin-top:.5rem}
+.resultados button,.alertas button{display:flex;flex-wrap:wrap;gap:.3rem .5rem;align-items:center;justify-content:space-between;text-align:left;padding:.6rem .8rem;border-radius:12px;border:1px solid var(--linea);background:#fff;cursor:pointer}
+.resultados span{font-size:.88rem;color:var(--tinta2)}
+.alertas{display:grid;gap:.4rem}
+.alertas button{justify-content:flex-start}
+.cifras{display:flex;flex-wrap:wrap;gap:.6rem 1.6rem;margin:.6rem 0 1rem}
+.cifras b{display:block;font:800 1.7rem var(--serif);color:var(--noche)}
+.cifras div{font-size:.9rem;color:var(--tinta2)}
+.barra-sem{display:flex;height:16px;border-radius:999px;overflow:hidden;background:#EFE6D3;margin:.4rem 0}
+.barra-sem i{display:block}
+.barra-sem.vacia{height:auto;padding:.3rem .8rem;font-size:.85rem;color:var(--tinta2)}
+.leyenda{display:flex;flex-wrap:wrap;gap:.3rem 1rem;font-size:.9rem}
+.leyenda i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:.35rem;vertical-align:-1px}
+.g-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.7rem}
+.g-card{display:grid;gap:.3rem;text-align:left;padding:.85rem .95rem;border-radius:14px;border:1.5px solid var(--linea);background:#fff;cursor:pointer}
+.g-card:hover{border-color:var(--noche)}
+.g-top{display:flex;justify-content:space-between;align-items:center}
+.g-top b{font:800 1.35rem var(--serif)}
+.g1 .g-top b{color:var(--corteza)}.g2 .g-top b{color:var(--jade)}.g3 .g-top b{color:var(--indigo)}
+.prom{display:inline-block;min-width:3.1rem;text-align:center;padding:.15rem .5rem;border-radius:999px;font-weight:700;background:#E4DCCB;color:var(--tinta2)}
+.prom.verde{background:var(--verde);color:#fff}.prom.amarillo{background:var(--amarillo);color:#2A2118}.prom.azul{background:var(--azul);color:#fff}.prom.rojo{background:var(--rojo);color:#fff}
+.prom.grande{font:800 1.8rem var(--serif);padding:.3rem .9rem;border-radius:16px}
+.captura-sem{display:grid;gap:.8rem}
+.cs .ayuda{margin-bottom:.4rem}
+.cs-grupos{display:flex;flex-wrap:wrap;gap:.4rem}
+.cs-g{padding:.25rem .7rem;border-radius:999px;background:#F8E1DF;color:var(--rojo);font-weight:700;font-size:.9rem}
+.cs-g.parcial{background:#FFF1C9;color:#6B5200}
+.cs-g.lista{background:#DDF0E3;color:var(--jade)}
+.graf{width:100%;height:auto;max-height:260px;display:block}
+.criterios{display:grid;gap:.45rem}
+.cr{display:grid;grid-template-columns:minmax(120px,1.3fr) 2fr 2.4rem;gap:.6rem;align-items:center;font-size:.92rem}
+.cr-barra{height:12px;border-radius:999px;background:#EFE6D3;overflow:hidden}
+.cr-barra i{display:block;height:100%}
+.cr b{text-align:right}
+.fila-al{cursor:pointer}
+.fila-al:hover{background:#FBF6EA}
+.comparacion{background:#F3EBD8;padding:.6rem .8rem;border-radius:10px}

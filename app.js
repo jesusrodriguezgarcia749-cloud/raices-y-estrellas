@@ -1,4 +1,4 @@
-/* Raíces y Estrellas · Plataforma docente · Entrega 2: acceso, panel directivo y calificación */
+/* Raíces y Estrellas · Plataforma docente · Entrega 3: acceso, panel directivo, calificación, tablero y reportes PDF */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, serverTimestamp, addDoc, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -55,13 +55,14 @@ function actualizarRed() { $('#red').hidden = navigator.onLine; }
 addEventListener('online', actualizarRed); addEventListener('offline', actualizarRed); actualizarRed();
 
 /* ---------- Estado ---------- */
-const estado = { rol: null, nombre: null, alumnos: [], maestros: [], claves: 0, califs: {}, aplic: {}, pestana: 'alumnos', grupoSel: '1G', verBajas: false, filtro: '', subs: [] };
+const estado = { rol: null, nombre: null, alumnos: [], maestros: [], claves: 0, califs: {}, aplic: {}, pestana: 'tablero', config: {}, grupoSel: '1G', verBajas: false, filtro: '', subs: [] };
 
 function escuchar() {
   estado.subs.forEach(f => f()); estado.subs = [];
   estado.subs.push(onSnapshot(collection(db, 'alumnos'), s => { estado.alumnos = s.docs.map(d => d.data()); refrescar(); }, errorDatos));
   estado.subs.push(onSnapshot(collection(db, 'maestros'), s => { estado.maestros = s.docs.map(d => ({ id: d.id, ...d.data() })); refrescar(); }, errorDatos));
   estado.subs.push(onSnapshot(collection(db, 'claves'), s => { estado.claves = s.size; refrescar(); }, errorDatos));
+  estado.subs.push(onSnapshot(doc(db, 'config', 'escuela'), d => { estado.config = d.exists() ? d.data() : {}; }, () => {}));
 }
 function errorDatos(e) { console.error(e); aviso('No se pudieron leer los datos. Revisa que las reglas de seguridad estén publicadas.', true); }
 let refrescar = () => {};
@@ -186,6 +187,7 @@ function pantallaDocente() {
   if (aplicaIC) LECTURAS.filter(l => l.semana === Math.max(ultima, 1)).forEach(l => ids.add(l.id));
   escucharCalificaciones([...ids]);
   if (ui.pantalla === 'calificar' && ui.lec) return pantallaCalificar();
+  if (ui.pantalla === 'tablero') return tablero(vista, volverInicio);
   inicioDocente(m, califica, aplicaIC, ultima);
 }
 
@@ -207,8 +209,8 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
     html += `<section class="tarjeta"><h2>Esta semana aplicas</h2><p class="ayuda">Imprime las hojas ya ordenadas por número de lista y, al terminar la sesión, marca quién faltó.</p>
       ${lecs.map(l => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> ${esc(l.titulo)}</p>
         <div class="grupos-apl">${GRUPOS[l.grado].map(gr => { const ap = estado.aplic?.[idAplic(l.id, l.grado, gr)];
-          return `<div class="apl"><b>${l.grado}.° ${gr}</b>${ap ? `<span class="ok">Aplicada · ${ap.faltas?.length || 0} faltas</span>` : '<span>Sin registrar</span>'}
-          <div class="fila-btn"><button type="button" class="btn linea chico" data-hojas="${l.id}" data-g="${l.grado}" data-gr="${gr}">Imprimir hojas</button><button type="button" class="btn chico" data-faltas="${l.id}" data-g="${l.grado}" data-gr="${gr}">${ap ? 'Editar faltas' : 'Registrar faltas'}</button></div></div>`; }).join('')}</div></div>`).join('') || '<p class="vacio">No tienes grados asignados.</p>'}
+          return `<div class="apl"><div><b>${l.grado}.° ${gr}</b>${ap ? `<span class="ok">Aplicada, ${ap.faltas?.length || 0} faltas</span>` : '<span>Sin registrar</span>'}</div>
+          <div class="fila-btn"><button type="button" class="btn linea chico" data-hojas="${l.id}" data-g="${l.grado}" data-gr="${gr}" aria-label="Imprimir hojas de ${l.grado}.° ${gr}">Hojas</button><button type="button" class="btn chico" data-faltas="${l.id}" data-g="${l.grado}" data-gr="${gr}" aria-label="Registrar faltas de ${l.grado}.° ${gr}">Faltas</button></div></div>`; }).join('')}</div></div>`).join('') || '<p class="vacio">No tienes grados asignados.</p>'}
     </section>`;
   }
 
@@ -222,8 +224,9 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
     ${pendientes.map(l => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> Semana ${l.semana}: ${esc(l.titulo)}</p>
       <div class="t-grupos">${GRUPOS[l.grado].map(gr => tarjetaGrupo(l, l.grado, gr, 'calificar')).join('')}</div></div>`).join('')}</section>`;
 
-  html += `<section class="tarjeta"><h2>Calificar otra lectura</h2><p class="ayuda">Por ejemplo, si cubres a un compañero.</p>
-    <div class="otra"><select id="o-lec" aria-label="Lectura">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1)).map(l => `<option value="${l.id}">Semana ${l.semana}: ${esc(l.titulo)}</option>`).join('')}</optgroup>`).join('')}</select>
+  html += `<button type="button" class="btn oro ancho-total" id="ir-tablero">Consultar alumnos, semáforo y reportes</button>
+  <section class="tarjeta"><h2>Calificar otra lectura</h2><p class="ayuda">Por ejemplo, si cubres a un compañero.</p>
+    <div class="otra"><select id="o-lec" aria-label="Lectura">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1)).map(l => `<option value="${l.id}" ${l.semana === sem.sem && l.grado === ((m.grados || [1])[0]) ? 'selected' : ''}>Semana ${l.semana}: ${esc(l.titulo)}</option>`).join('')}</optgroup>`).join('')}</select>
     <button type="button" class="btn linea" id="o-ir">Elegir grupo</button></div></section>
     <p style="text-align:center"><button type="button" class="btn-texto oscuro" id="cambiar-nombre">No soy ${esc(estado.nombre)}</button></p>`;
   vista.innerHTML = html;
@@ -235,6 +238,7 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
     abrirModal('Elige el grupo', `<p>${esc(l.titulo)}</p><div class="t-grupos">${GRUPOS[l.grado].map(gr => `<button type="button" class="t-grupo" data-gr="${gr}"><b>${l.grado}.° ${gr}</b></button>`).join('')}</div>`);
     $('#modal-cuerpo').querySelectorAll('[data-gr]').forEach(b => b.addEventListener('click', () => { cerrarModal(); abrirCalificar(l.id, l.grado, b.dataset.gr); })); });
   $('#cambiar-nombre').addEventListener('click', () => { localStorage.removeItem('rye_docente'); estado.nombre = null; pantallaDocente(); });
+  $('#ir-tablero').addEventListener('click', () => { ui.pantalla = 'tablero'; rep.vista = 'resumen'; pantallaDocente(); scrollTo(0, 0); });
 }
 
 /* Registrar faltas (Integración Curricular) */
@@ -339,7 +343,7 @@ function pantallaCalificar() {
   $('#h-subir').addEventListener('click', () => $('#h-archivo').click());
   $('#h-archivo').addEventListener('change', e => { if (e.target.files[0]) leerExcelGrupo(e.target.files[0], lec, ui.grado, ui.grupo); e.target.value = ''; });
 }
-function volverInicio() { ui.pantalla = 'inicio'; ui.lec = null; ui.borrador = null; pantallaDocente(); scrollTo(0, 0); }
+function volverInicio() { ui.pantalla = 'inicio'; ui.lec = null; ui.borrador = null; rep.vista = 'resumen'; rep.grupo = null; pantallaDocente(); scrollTo(0, 0); }
 function irA(i) { ui.idx = i; ui.borrador = null; pantallaCalificar(); document.querySelector('.tira')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); document.querySelector('.punto.actual')?.scrollIntoView({ inline: 'center', block: 'nearest' }); }
 
 async function guardarCalif(a, datos) {
@@ -486,13 +490,394 @@ async function leerExcelGrupo(archivo, lec, g, gr) {
   });
 }
 
+/* ---------- Estadísticas ---------- */
+const RANGO_COLOR = { rojo: 0, azul: 1, amarillo: 2, verde: 3 };
+const HEX = { verde: '#2E8B57', amarillo: '#E0B321', azul: '#2F6FD1', rojo: '#C8403A', gris: '#BDB3A3' };
+const COLORES = ['verde', 'amarillo', 'azul', 'rojo'];
+const CORTO = { literal: 'Literal', inferencial: 'Inferencial', critico: 'Crítico y valorativo', central: 'Elemento central', escrita: 'Expresión escrita' };
+function lecturaTendencia(ini, fin) { const d = fin - ini; return d >= 0.5 ? 'Muestra avance en su comprensión lectora.' : d <= -0.5 ? (fin >= 8.5 ? 'Bajó ligeramente, aunque se mantiene en verde.' : 'Su desempeño bajó con respecto al inicio; conviene darle seguimiento.') : 'Su desempeño se mantiene estable.'; }
+const prom = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+const r1 = x => x == null ? '—' : (Math.round(x * 10) / 10).toFixed(1);
+const MESES_CICLO = [...new Set(SEMANAS.map(s => s.inicio.slice(0, 7)))];
+const nomMes = ym => { const [y, m] = ym.split('-'); return MESES[+m - 1][0].toUpperCase() + MESES[+m - 1].slice(1) + ' ' + y; };
+const fechaLarga = d => `${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}`;
+
+// Periodo: qué semanas abarca (solo las que ya comenzaron).
+function semanasDe(p) {
+  const { ultima } = semanaVigente(), tope = Math.max(ultima, 1);
+  let lista = SEMANAS;
+  if (p.tipo === 'trimestre') lista = SEMANAS.filter(s => s.trimestre === +p.valor);
+  if (p.tipo === 'mes') lista = SEMANAS.filter(s => s.inicio.startsWith(p.valor));
+  if (p.tipo === 'quincena') lista = SEMANAS.filter(s => Math.ceil(s.sem / 2) === +p.valor);
+  if (p.tipo === 'rango') lista = SEMANAS.filter(s => (!p.desde || s.fin >= p.desde) && (!p.hasta || s.inicio <= p.hasta));
+  return new Set(lista.filter(s => s.sem <= tope).map(s => s.sem));
+}
+function nombrePeriodo(p) {
+  if (p.tipo === 'trimestre') return `Trimestre ${['I', 'II', 'III'][p.valor - 1]}`;
+  if (p.tipo === 'mes') return nomMes(p.valor);
+  if (p.tipo === 'quincena') { const a = SEMANAS[p.valor * 2 - 2], b = SEMANAS[p.valor * 2 - 1] || a; return `Quincena de las semanas ${a.sem} y ${b.sem} (${rangoSem({ inicio: a.inicio, fin: b.fin })})`; }
+  if (p.tipo === 'rango') return `Del ${p.desde ? fechaLarga(fISO(p.desde)) : 'inicio del ciclo'} al ${p.hasta ? fechaLarga(fISO(p.hasta)) : 'día de hoy'}`;
+  return `Ciclo escolar ${CICLO} (a la fecha)`;
+}
+
+// Resultado de un alumno en un conjunto de semanas.
+function statsAlumno(a, semanas, califs = rep.califs) {
+  const lecs = LECTURAS.filter(l => l.grado === a.grado && semanas.has(l.semana) && (!a.fechaAlta || a.fechaAlta <= SEMANAS[l.semana - 1].fin)).sort((x, y) => x.semana - y.semana);
+  const filas = lecs.map(l => ({ lec: l, c: (() => { const c = califs[idCalif(a.curp, l.id)]; return hecho(c) ? c : null; })() }));
+  const cal = filas.filter(f => f.c?.estado === 'calificado');
+  const p = prom(cal.map(f => f.c.calificacion));
+  const criterios = Object.fromEntries(CRIT.map(k => [k.id, prom(cal.map(f => f.c.niveles?.[k.id]).filter(Boolean))]));
+  return { a, filas, cal, prom: p, color: colorDe(p), faltas: filas.filter(f => f.c?.estado === 'falta').length, noEntrego: filas.filter(f => f.c?.estado === 'no_entrego').length,
+    pendientes: filas.filter(f => !f.c).length, esperadas: filas.length, criterios };
+}
+function statsConjunto(alumnos, semanas) {
+  const est = alumnos.map(a => statsAlumno(a, semanas));
+  const conteo = Object.fromEntries([...COLORES, 'gris'].map(c => [c, est.filter(e => e.color === c).length]));
+  const todas = est.flatMap(e => e.cal);
+  const criterios = Object.fromEntries(CRIT.map(k => [k.id, prom(todas.map(f => f.c.niveles?.[k.id]).filter(Boolean))]));
+  const esperadas = est.reduce((s, e) => s + e.esperadas, 0), calificadas = todas.length;
+  const debil = CRIT.filter(k => criterios[k.id] != null).sort((x, y) => criterios[x.id] - criterios[y.id])[0];
+  return { est, conteo, prom: prom(todas.map(f => f.c.calificacion)), criterios, debil, participacion: esperadas ? calificadas / esperadas : null, calificadas, esperadas };
+}
+function evolucion(alumnos, semanas) {
+  return [...semanas].sort((a, b) => a - b).map(sem => {
+    const c = { sem, verde: 0, amarillo: 0, azul: 0, rojo: 0 };
+    alumnos.forEach(a => { const l = LECTURAS.find(x => x.grado === a.grado && x.semana === sem); const k = l && rep.califs[idCalif(a.curp, l.id)]; if (k?.estado === 'calificado') c[colorDe(k.calificacion)]++; });
+    return c;
+  }).filter(c => c.verde + c.amarillo + c.azul + c.rojo > 0);
+}
+function alertas(alumnos) {
+  const todas = new Set(SEMANAS.map(s => s.sem)), out = [];
+  alumnos.forEach(a => {
+    const cal = statsAlumno(a, todas).cal;
+    if (cal.length >= 2) {
+      const [x, y] = cal.slice(-2).map(f => f.c.calificacion);
+      if (x < 6 && y < 6) { out.push({ a, tipo: 'Dos rojos seguidos', det: `${r1(x)} y ${r1(y)}` }); return; }
+    }
+    if (cal.length >= 4) {
+      const antes = prom(cal.slice(0, -2).map(f => f.c.calificacion)), ahora = prom(cal.slice(-2).map(f => f.c.calificacion));
+      if (RANGO_COLOR[colorDe(ahora)] < RANGO_COLOR[colorDe(antes)]) out.push({ a, tipo: 'Va a la baja', det: `de ${r1(antes)} a ${r1(ahora)}` });
+    }
+  });
+  return out;
+}
+
+/* ---------- Gráficas en pantalla (SVG) ---------- */
+function barraSemaforo(conteo) {
+  const tot = COLORES.reduce((s, c) => s + conteo[c], 0);
+  if (!tot) return '<div class="barra-sem vacia"><span>Sin calificaciones en el periodo</span></div>';
+  return `<div class="barra-sem" role="img" aria-label="${COLORES.map(c => `${NOMBRE_COLOR[c]}: ${conteo[c]}`).join(', ')}">${COLORES.filter(c => conteo[c]).map(c => `<i style="flex:${conteo[c]};background:${HEX[c]}" title="${NOMBRE_COLOR[c]}: ${conteo[c]}"></i>`).join('')}</div>`;
+}
+function leyendaSem(conteo) {
+  return `<div class="leyenda">${COLORES.map(c => `<span><i style="background:${HEX[c]}"></i>${NOMBRE_COLOR[c]} <b>${conteo[c]}</b></span>`).join('')}${conteo.gris ? `<span><i style="background:${HEX.gris}"></i>Sin calificar <b>${conteo.gris}</b></span>` : ''}</div>`;
+}
+function svgEvolucion(ev) {
+  if (!ev.length) return '<p class="vacio">Aún no hay semanas calificadas en este periodo.</p>';
+  const W = 320, H = 150, bw = Math.min(28, (W - 20) / ev.length - 4);
+  const barras = ev.map((c, i) => { const tot = c.verde + c.amarillo + c.azul + c.rojo; let y = H - 20; const x = 10 + i * ((W - 20) / ev.length) + 2;
+    return ['rojo', 'azul', 'amarillo', 'verde'].map(k => { const h = (H - 30) * c[k] / tot; y -= h; return h ? `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${HEX[k]}"/>` : ''; }).join('') + `<text x="${x + bw / 2}" y="${H - 6}" font-size="9" text-anchor="middle" fill="#6A5C4C">${c.sem}</text>`; }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="graf" role="img" aria-label="Distribución del semáforo por semana">${barras}</svg><p class="ayuda" style="text-align:center">Semana del ciclo. Cada barra muestra la proporción de alumnos en cada color.</p>`;
+}
+function svgTrayectoria(cal) {
+  if (!cal.length) return '<p class="vacio">Sin lecturas calificadas todavía.</p>';
+  const W = 320, H = 170, L = 26, R = 10, T = 10, B = 24, y = v => T + (H - T - B) * (1 - (v - 2) / 8), n = cal.length;
+  const x = i => n === 1 ? (L + W - R) / 2 : L + (W - L - R) * i / (n - 1);
+  const bandas = [[8.5, 10, 'verde'], [7, 8.5, 'amarillo'], [6, 7, 'azul'], [2, 6, 'rojo']].map(([a, b, c]) => `<rect x="${L}" y="${y(b)}" width="${W - L - R}" height="${y(a) - y(b)}" fill="${HEX[c]}" opacity=".12"/>`).join('');
+  const ejes = [2.5, 6, 7, 8.5, 10].map(v => `<text x="${L - 4}" y="${y(v) + 3}" font-size="8.5" text-anchor="end" fill="#6A5C4C">${v}</text>`).join('');
+  const linea = `<polyline fill="none" stroke="#16213F" stroke-width="2" points="${cal.map((f, i) => `${x(i)},${y(f.c.calificacion)}`).join(' ')}"/>`;
+  const pts = cal.map((f, i) => `<circle cx="${x(i)}" cy="${y(f.c.calificacion)}" r="4.5" fill="${HEX[colorDe(f.c.calificacion)]}" stroke="#fff" stroke-width="1.5"><title>Semana ${f.lec.semana}: ${r1(f.c.calificacion)}</title></circle><text x="${x(i)}" y="${H - 8}" font-size="8.5" text-anchor="middle" fill="#6A5C4C">${f.lec.semana}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="graf" role="img" aria-label="Trayectoria de calificaciones">${bandas}${ejes}${linea}${pts}</svg>`;
+}
+function barrasCriterio(criterios) {
+  return `<div class="criterios">${CRIT.map(k => { const v = criterios[k.id]; return `<div class="cr"><span>${esc(k.nombre.split(' (')[0])}</span><div class="cr-barra"><i style="width:${v ? v / 4 * 100 : 0}%;background:${v == null ? HEX.gris : v >= 3.4 ? HEX.verde : v >= 2.8 ? HEX.amarillo : v >= 2.4 ? HEX.azul : HEX.rojo}"></i></div><b>${v == null ? '—' : v.toFixed(1)}</b></div>`; }).join('')}<p class="ayuda">Promedio de nivel por criterio, de 1 a 4.</p></div>`;
+}
+
+/* ---------- Tablero ---------- */
+const rep = { califs: {}, cargado: null, cargando: false, vista: 'resumen', grupo: null, curp: null, periodo: { tipo: 'ciclo' }, filtro: '', historial: null };
+async function cargarReportes(forzar) {
+  if (rep.cargando || (rep.cargado && !forzar)) return;
+  rep.cargando = true; refrescar();
+  try {
+    const s = await getDocs(query(collection(db, 'calificaciones'), where('ciclo', '==', CICLO)));
+    rep.califs = {}; s.docs.forEach(d => { rep.califs[d.id] = d.data(); });
+    rep.cargado = new Date();
+  } catch (e) { console.error(e); aviso('No se pudieron cargar las calificaciones. Revisa la conexión.', true); }
+  rep.cargando = false; refrescar();
+}
+function selectorPeriodo() {
+  const p = rep.periodo, { ultima } = semanaVigente();
+  const quin = Array.from({ length: Math.ceil(Math.max(ultima, 1) / 2) }, (_, i) => i + 1);
+  const sec = p.tipo === 'trimestre' ? `<select id="p-val">${[1, 2, 3].map(t => `<option value="${t}" ${+p.valor === t ? 'selected' : ''}>Trimestre ${['I', 'II', 'III'][t - 1]}</option>`).join('')}</select>`
+    : p.tipo === 'mes' ? `<select id="p-val">${MESES_CICLO.map(m => `<option value="${m}" ${p.valor === m ? 'selected' : ''}>${nomMes(m)}</option>`).join('')}</select>`
+    : p.tipo === 'quincena' ? `<select id="p-val">${quin.map(q => `<option value="${q}" ${+p.valor === q ? 'selected' : ''}>Semanas ${q * 2 - 1} y ${q * 2}</option>`).join('')}</select>`
+    : p.tipo === 'rango' ? `<input type="date" id="p-desde" value="${p.desde || ''}" aria-label="Desde"><input type="date" id="p-hasta" value="${p.hasta || ''}" aria-label="Hasta">` : '';
+  return `<div class="periodo"><label for="p-tipo">Periodo</label><div class="periodo-campos"><select id="p-tipo">${[['ciclo', 'Ciclo completo'], ['trimestre', 'Trimestre'], ['mes', 'Mes'], ['quincena', 'Quincena'], ['rango', 'Fechas libres']].map(([v, t]) => `<option value="${v}" ${p.tipo === v ? 'selected' : ''}>${t}</option>`).join('')}</select>${sec}</div></div>`;
+}
+function enlazarPeriodo() {
+  $('#p-tipo')?.addEventListener('change', e => { const t = e.target.value, { ultima } = semanaVigente(), s = SEMANAS[Math.max(ultima, 1) - 1];
+    rep.periodo = { tipo: t, valor: t === 'trimestre' ? s.trimestre : t === 'mes' ? s.inicio.slice(0, 7) : t === 'quincena' ? Math.ceil(s.sem / 2) : undefined }; refrescar(); });
+  $('#p-val')?.addEventListener('change', e => { rep.periodo.valor = e.target.value; refrescar(); });
+  $('#p-desde')?.addEventListener('change', e => { rep.periodo.desde = e.target.value; refrescar(); });
+  $('#p-hasta')?.addEventListener('change', e => { rep.periodo.hasta = e.target.value; refrescar(); });
+}
+
+function tablero(cont, volver) {
+  cargarReportes();
+  if (!rep.cargado) { cont.innerHTML = '<div class="cargando">Cargando calificaciones…</div>'; return; }
+  const activos = estado.alumnos.filter(a => a.estado === 'activo');
+  if (rep.vista === 'grupo') return vistaGrupo(cont);
+  if (rep.vista === 'alumno') return vistaAlumno(cont);
+  const semanas = semanasDe(rep.periodo), esc0 = statsConjunto(activos, semanas);
+  const { ultima } = semanaVigente(), semAct = SEMANAS[Math.max(ultima, 1) - 1];
+  const q = normal(rep.filtro), encontrados = q.length >= 2 ? activos.filter(a => normal(nombreCompleto(a) + ' ' + a.curp).includes(q)).sort((a, b) => nombreCompleto(a).localeCompare(nombreCompleto(b), 'es')).slice(0, 12) : [];
+  const al = alertas(activos);
+  cont.innerHTML = `
+  ${volver ? '<button type="button" class="btn-texto oscuro" id="t-volver">‹ Volver</button>' : ''}
+  <div class="tarjeta">
+    <div class="tab-cab"><h2>Tablero de avance</h2><button type="button" class="btn-texto oscuro" id="t-act">Actualizar</button></div>
+    ${selectorPeriodo()}
+    <p class="ayuda">${esc(nombrePeriodo(rep.periodo))}. Actualizado a las ${rep.cargado.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }).replace(/\.$/, '')}</p>
+    <div class="buscar-al"><input id="t-buscar" type="search" class="buscar" placeholder="Buscar alumno por nombre o CURP" value="${esc(rep.filtro)}" aria-label="Buscar alumno">
+      ${encontrados.length ? `<div class="resultados">${encontrados.map(a => `<button type="button" data-curp="${a.curp}">${esc(nombreCompleto(a))}<span>${a.grado}.° ${a.grupo}</span></button>`).join('')}</div>` : q.length >= 2 ? '<p class="ayuda">Sin coincidencias.</p>' : ''}</div>
+  </div>
+  <div class="tarjeta">
+    <div class="tab-cab"><h2>Semáforo de la escuela</h2><button type="button" class="btn oro chico" id="pdf-escuela">PDF de la escuela</button></div>
+    <div class="cifras"><div><b>${r1(esc0.prom)}</b>promedio</div><div><b>${esc0.participacion == null ? '—' : Math.round(esc0.participacion * 100) + '%'}</b>lecturas calificadas</div><div><b>${activos.length}</b>alumnos</div></div>
+    ${barraSemaforo(esc0.conteo)}${leyendaSem(esc0.conteo)}
+  </div>
+  <div class="tarjeta"><h2>Grupos</h2><div class="g-cards">${LISTA_GRUPOS.map(x => { const st = statsConjunto(activos.filter(a => a.grado === x.grado && a.grupo === x.grupo), semanas);
+    return `<button type="button" class="g-card g${x.grado}" data-g="${x.id}"><div class="g-top"><b>${x.grado}.° ${x.grupo}</b><span class="prom ${colorDe(st.prom)}">${r1(st.prom)}</span></div>${barraSemaforo(st.conteo)}
+      <span class="ayuda">${st.est.length} alumnos, ${st.participacion == null ? 'sin datos' : Math.round(st.participacion * 100) + '% calificado'}</span>${st.debil ? `<span class="ayuda">Criterio más bajo: ${esc(CORTO[st.debil.id].toLowerCase())}</span>` : ''}</button>`; }).join('')}</div></div>
+  <div class="tarjeta"><h2>Captura de la semana ${semAct.sem}</h2><div class="captura-sem">${[1, 2, 3].map(g => { const l = LECTURAS.find(x => x.grado === g && x.semana === semAct.sem);
+    const resp = estado.maestros.filter(m => m.activo !== false && (m.asignaturas || []).includes(l.asignatura) && (m.grados || []).includes(g)).map(m => m.nombre);
+    return `<div class="cs"><p class="lec-tit"><span class="etq g${g}">${g}.° grado</span> ${esc(l.titulo)}</p><p class="ayuda">Califica ${esc(l.asignatura)}${resp.length ? `: ${esc(resp.join(', '))}` : ' (sin maestro asignado)'}</p>
+      <div class="cs-grupos">${GRUPOS[g].map(gr => { const al2 = alumnosDe(l, g, gr), h = al2.filter(a => { const c = rep.califs[idCalif(a.curp, l.id)]; return hecho(c); }).length;
+        return `<span class="cs-g ${al2.length && h === al2.length ? 'lista' : h ? 'parcial' : ''}">${g}.° ${gr}: ${h}/${al2.length}</span>`; }).join('')}</div></div>`; }).join('')}</div></div>
+  <div class="tarjeta"><h2>Alertas</h2>${al.length ? `<div class="alertas">${al.map(x => `<button type="button" data-curp="${x.a.curp}"><span class="etiqueta ${x.tipo === 'Dos rojos seguidos' ? 'baja' : 'cambio'}">${x.tipo}</span> ${esc(nombreCompleto(x.a))} <span class="ayuda">${x.a.grado}.° ${x.a.grupo}, ${x.det}</span></button>`).join('')}</div>` : '<p class="vacio">Sin alertas por ahora.</p>'}</div>
+  <div class="tarjeta"><h2>Evolución del semáforo</h2>${svgEvolucion(evolucion(activos, semanas))}</div>`;
+  enlazarPeriodo();
+  $('#t-volver')?.addEventListener('click', volver);
+  $('#t-act').addEventListener('click', () => cargarReportes(true));
+  const bus = $('#t-buscar'); bus.addEventListener('input', e => { rep.filtro = e.target.value; refrescar(); const b = $('#t-buscar'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); });
+  cont.querySelectorAll('[data-curp]').forEach(b => b.addEventListener('click', () => { rep.vista = 'alumno'; rep.curp = b.dataset.curp; rep.historial = null; refrescar(); scrollTo(0, 0); }));
+  cont.querySelectorAll('.g-card').forEach(b => b.addEventListener('click', () => { rep.vista = 'grupo'; rep.grupo = b.dataset.g; refrescar(); scrollTo(0, 0); }));
+  $('#pdf-escuela').addEventListener('click', e => generarPDF(e.target, pdfEscuela));
+}
+
+function vistaGrupo(cont) {
+  const g = +rep.grupo[0], gr = rep.grupo.slice(1), semanas = semanasDe(rep.periodo);
+  const al = estado.alumnos.filter(a => a.estado === 'activo' && a.grado === g && a.grupo === gr).sort(ordenAlumno);
+  const st = statsConjunto(al, semanas);
+  cont.innerHTML = `<button type="button" class="btn-texto oscuro" id="t-atras">‹ Tablero</button>
+  <div class="tarjeta"><div class="tab-cab"><h2>${g}.° ${gr}</h2><button type="button" class="btn oro chico" id="pdf-grupo">PDF del grupo</button></div>
+    ${selectorPeriodo()}<p class="ayuda">${esc(nombrePeriodo(rep.periodo))}.</p>
+    <div class="cifras"><div><b>${r1(st.prom)}</b>promedio</div><div><b>${st.participacion == null ? '—' : Math.round(st.participacion * 100) + '%'}</b>calificado</div><div><b>${al.length}</b>alumnos</div></div>
+    ${barraSemaforo(st.conteo)}${leyendaSem(st.conteo)}</div>
+  <div class="tarjeta"><h2>Por criterio</h2>${barrasCriterio(st.criterios)}</div>
+  <div class="tabla-envol"><table><thead><tr><th>N.°</th><th>Alumno</th><th>Prom.</th><th class="ocultar-movil">Lecturas</th><th class="ocultar-movil">Faltas</th></tr></thead><tbody>
+  ${st.est.map(e => `<tr class="fila-al" data-curp="${e.a.curp}"><td class="num">${e.a.lista}</td><td>${esc(nombreCompleto(e.a))}</td><td><span class="prom ${e.color}">${r1(e.prom)}</span></td><td class="ocultar-movil">${e.cal.length} de ${e.esperadas}</td><td class="ocultar-movil">${e.faltas}</td></tr>`).join('')}
+  </tbody></table>${al.length ? '' : '<p class="vacio">Sin alumnos.</p>'}</div>
+  <div class="tarjeta" style="margin-top:1rem"><h2>Evolución del grupo</h2>${svgEvolucion(evolucion(al, semanas))}</div>`;
+  enlazarPeriodo();
+  $('#t-atras').addEventListener('click', () => { rep.vista = 'resumen'; refrescar(); scrollTo(0, 0); });
+  cont.querySelectorAll('.fila-al').forEach(f => f.addEventListener('click', () => { rep.vista = 'alumno'; rep.curp = f.dataset.curp; rep.historial = null; refrescar(); scrollTo(0, 0); }));
+  $('#pdf-grupo').addEventListener('click', e => generarPDF(e.target, d => pdfGrupo(d, g, gr)));
+}
+
+function vistaAlumno(cont) {
+  const a = estado.alumnos.find(x => x.curp === rep.curp);
+  if (!a) { rep.vista = 'resumen'; return tablero(cont); }
+  const semanas = semanasDe(rep.periodo), e = statsAlumno(a, semanas);
+  const ini = prom(e.cal.slice(0, 3).map(f => f.c.calificacion)), fin = prom(e.cal.slice(-3).map(f => f.c.calificacion));
+  cont.innerHTML = `<button type="button" class="btn-texto oscuro" id="t-atras">‹ Volver</button>
+  <div class="tarjeta"><div class="tab-cab"><div><p class="ayuda">${a.grado}.° ${a.grupo}, n.° ${a.lista}</p><h2>${esc(nombreCompleto(a))}</h2></div><span class="prom grande ${e.color}">${r1(e.prom)}</span></div>
+    ${selectorPeriodo()}<p class="ayuda">${esc(nombrePeriodo(rep.periodo))}.</p>
+    <div class="cifras"><div><b>${e.cal.length}</b>calificadas</div><div><b>${e.faltas}</b>faltas</div><div><b>${e.noEntrego}</b>no entregó</div><div><b>${e.pendientes}</b>sin registro</div></div>
+    ${e.cal.length >= 4 ? `<p class="comparacion">Primeras lecturas del periodo: <b>${r1(ini)}</b>. Últimas: <b>${r1(fin)}</b>. ${lecturaTendencia(ini, fin)}</p>` : ''}
+    <button type="button" class="btn oro chico" id="pdf-alumno">PDF del alumno</button></div>
+  <div class="tarjeta"><h2>Trayectoria</h2>${svgTrayectoria(e.cal)}</div>
+  <div class="tarjeta"><h2>Por criterio</h2>${barrasCriterio(e.criterios)}</div>
+  <div class="tabla-envol"><table><thead><tr><th>Sem.</th><th>Lectura</th><th>Resultado</th></tr></thead><tbody>
+  ${e.filas.map(f => `<tr><td class="num">${f.lec.semana}</td><td>${esc(f.lec.titulo)}</td><td>${!f.c ? '<span class="ayuda">Sin registro</span>' : f.c.estado === 'calificado' ? `<span class="prom ${colorDe(f.c.calificacion)}">${r1(f.c.calificacion)}</span>` : `<span class="etiqueta">${f.c.estado === 'falta' ? 'No asistió' : 'No entregó'}</span>`}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  enlazarPeriodo();
+  $('#t-atras').addEventListener('click', () => { rep.vista = rep.grupo ? 'grupo' : 'resumen'; refrescar(); scrollTo(0, 0); });
+  $('#pdf-alumno').addEventListener('click', ev => generarPDF(ev.target, d => pdfAlumno(d, a)));
+}
+
+/* ---------- PDF ---------- */
+let logoBytes = null;
+async function generarPDF(boton, llenar) {
+  if (typeof PDFLib === 'undefined') { aviso('No se pudo cargar la herramienta de PDF. Revisa la conexión.', true); return; }
+  const txt = boton.textContent; boton.disabled = true; boton.textContent = 'Generando…';
+  try {
+    if (!logoBytes) logoBytes = await fetch('logo-escuela.jpg').then(r => r.ok ? r.arrayBuffer() : null).catch(() => null);
+    const d = await DocPDF.crear();
+    const nombre = await llenar(d);
+    const bytes = await d.terminar();
+    descargar(nombre, new Blob([bytes], { type: 'application/pdf' }));
+    aviso('PDF descargado.');
+  } catch (e) { console.error(e); aviso('No se pudo generar el PDF.', true); }
+  boton.disabled = false; boton.textContent = txt;
+}
+const limpiarPDF = t => String(t ?? '').replace(/[^\x20-\x7E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026]/g, '');
+const rgbHex = h => PDFLib.rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
+
+class DocPDF {
+  static async crear() {
+    const d = new DocPDF(); const { PDFDocument, StandardFonts } = PDFLib;
+    d.pdf = await PDFDocument.create(); d.pdf.setTitle('Raíces y Estrellas'); d.pdf.setAuthor('EST 17 Turno Vespertino');
+    d.f = await d.pdf.embedFont(StandardFonts.Helvetica); d.fb = await d.pdf.embedFont(StandardFonts.HelveticaBold);
+    d.logo = logoBytes ? await d.pdf.embedJpg(logoBytes) : null;
+    d.W = 612; d.H = 792; d.M = 46; d.pagina(); return d;
+  }
+  pagina() {
+    this.p = this.pdf.addPage([this.W, this.H]); let y = this.H - this.M;
+    if (this.logo) this.p.drawImage(this.logo, { x: this.M, y: y - 50, width: 43, height: 50 });
+    const x = this.M + (this.logo ? 54 : 0);
+    this.t('Escuela Secundaria Técnica N.° 17, Turno Vespertino', x, y - 12, 11.5, true);
+    this.t('C.C.T. 04DST0017E. San Francisco de Campeche, Campeche', x, y - 26, 8.5, false, '#5B4E40');
+    this.t(`Raíces y Estrellas. Estrategia para la Comprensión Lectora, ciclo escolar ${CICLO}`, x, y - 38, 8.5, false, '#5B4E40');
+    this.p.drawLine({ start: { x: this.M, y: y - 58 }, end: { x: this.W - this.M, y: y - 58 }, thickness: 1.2, color: rgbHex('#16213F') });
+    this.y = y - 78;
+  }
+  t(s, x, y, size = 10, bold = false, color = '#1E1A16') { this.p.drawText(limpiarPDF(s), { x, y, size, font: bold ? this.fb : this.f, color: rgbHex(color) }); }
+  ancho(s, size, bold) { return (bold ? this.fb : this.f).widthOfTextAtSize(limpiarPDF(s), size); }
+  asegurar(h) { if (this.y - h < this.M + 20) this.pagina(); }
+  lineas(s, size, max, bold) {
+    const out = []; let cur = '';
+    limpiarPDF(s).split(/\s+/).forEach(w => { const prueba = cur ? cur + ' ' + w : w; if (this.ancho(prueba, size, bold) > max && cur) { out.push(cur); cur = w; } else cur = prueba; });
+    if (cur) out.push(cur); return out;
+  }
+  titulo(s, size = 17) { this.asegurar(size + 12); this.lineas(s, size, this.W - 2 * this.M, true).forEach(l => { this.t(l, this.M, this.y, size, true, '#16213F'); this.y -= size + 4; }); this.y -= 4; }
+  subtitulo(s, espacio = 60) { this.asegurar(espacio); this.y -= 6; this.t(s, this.M, this.y, 12, true, '#16213F'); this.y -= 16; }
+  parrafo(s, size = 10, color = '#1E1A16') { this.lineas(s, size, this.W - 2 * this.M).forEach(l => { this.asegurar(size + 4); this.t(l, this.M, this.y, size, false, color); this.y -= size + 4; }); this.y -= 4; }
+  cifras(items) {
+    this.asegurar(46); const w = (this.W - 2 * this.M) / items.length;
+    items.forEach(([v, et], i) => { const x = this.M + i * w; this.p.drawRectangle({ x: x + 2, y: this.y - 34, width: w - 4, height: 40, color: rgbHex('#F6EEDC') });
+      this.t(v, x + 10, this.y - 14, 16, true, '#16213F'); this.t(et, x + 10, this.y - 28, 8.5, false, '#5B4E40'); });
+    this.y -= 50;
+  }
+  semaforo(conteo) {
+    this.asegurar(44); const w = this.W - 2 * this.M, tot = COLORES.reduce((s, c) => s + conteo[c], 0); let x = this.M;
+    if (!tot) { this.p.drawRectangle({ x, y: this.y - 14, width: w, height: 14, color: rgbHex('#EFE6D3') }); }
+    else COLORES.forEach(c => { if (!conteo[c]) return; const ww = w * conteo[c] / tot; this.p.drawRectangle({ x, y: this.y - 14, width: ww, height: 14, color: rgbHex(HEX[c]) }); x += ww; });
+    this.y -= 28; x = this.M;
+    [...COLORES, ...(conteo.gris ? ['gris'] : [])].forEach(c => { this.p.drawRectangle({ x, y: this.y - 1, width: 8, height: 8, color: rgbHex(HEX[c]) }); const s = `${NOMBRE_COLOR[c]}: ${conteo[c]}`; this.t(s, x + 12, this.y, 9); x += this.ancho(s, 9) + 26; });
+    this.y -= 18;
+  }
+  criterios(cr) {
+    CRIT.forEach(k => { this.asegurar(18); const v = cr[k.id], bx = this.M + 190, bw = this.W - 2 * this.M - 230;
+      this.t(k.nombre.split(' (')[0], this.M, this.y, 9);
+      this.p.drawRectangle({ x: bx, y: this.y - 2, width: bw, height: 10, color: rgbHex('#EFE6D3') });
+      if (v) this.p.drawRectangle({ x: bx, y: this.y - 2, width: bw * v / 4, height: 10, color: rgbHex(v >= 3.4 ? HEX.verde : v >= 2.8 ? HEX.amarillo : v >= 2.4 ? HEX.azul : HEX.rojo) });
+      this.t(v == null ? '—' : v.toFixed(1), bx + bw + 8, this.y, 9, true); this.y -= 17; });
+    this.y -= 4;
+  }
+  tabla(cols, filas) {
+    const alto = 17, fila = (vals, cab, par) => {
+      if (this.y - alto < this.M + 20) { this.pagina(); fila(cols.map(c => c.t), true); }
+      let x = this.M;
+      if (cab) this.p.drawRectangle({ x: this.M, y: this.y - 5, width: this.W - 2 * this.M, height: alto, color: rgbHex('#16213F') });
+      else if (par) this.p.drawRectangle({ x: this.M, y: this.y - 5, width: this.W - 2 * this.M, height: alto, color: rgbHex('#FBF6EA') });
+      vals.forEach((v, i) => { const c = cols[i], w = c.w;
+        if (!cab && v && typeof v === 'object') { this.p.drawRectangle({ x: x + 2, y: this.y - 3, width: w - 8, height: 13, color: rgbHex(HEX[v.color] || HEX.gris) }); this.t(v.t, x + 6, this.y, 9, true, v.color === 'amarillo' ? '#1E1A16' : '#FFFFFF'); }
+        else { let s = String(v ?? ''); while (s.length > 3 && this.ancho(s, 9, cab) > w - 8) s = s.slice(0, -2) + '…';
+          this.t(s, c.der ? x + w - 6 - this.ancho(s, 9, cab) : x + 4, this.y, 9, cab, cab ? '#FFFFFF' : '#1E1A16'); }
+        x += w; });
+      this.y -= alto;
+    };
+    this.asegurar(alto * 3); fila(cols.map(c => c.t), true); filas.forEach((f, i) => fila(f, false, i % 2)); this.y -= 8;
+  }
+  trayectoria(cal) {
+    const h = 150; this.asegurar(h + 20); const L = this.M + 22, R = this.W - this.M, T = this.y, B = this.y - h + 16;
+    const yv = v => B + (T - B) * (v - 2) / 8, n = cal.length, xv = i => n === 1 ? (L + R) / 2 : L + (R - L) * i / (n - 1);
+    [[8.5, 10, 'verde'], [7, 8.5, 'amarillo'], [6, 7, 'azul'], [2, 6, 'rojo']].forEach(([a, b, c]) => this.p.drawRectangle({ x: L, y: yv(a), width: R - L, height: yv(b) - yv(a), color: rgbHex(HEX[c]), opacity: 0.13 }));
+    [2.5, 6, 7, 8.5, 10].forEach(v => this.t(String(v), this.M, yv(v) - 3, 8, false, '#5B4E40'));
+    for (let i = 1; i < n; i++) this.p.drawLine({ start: { x: xv(i - 1), y: yv(cal[i - 1].c.calificacion) }, end: { x: xv(i), y: yv(cal[i].c.calificacion) }, thickness: 1.6, color: rgbHex('#16213F') });
+    cal.forEach((f, i) => { this.p.drawCircle({ x: xv(i), y: yv(f.c.calificacion), size: 4, color: rgbHex(HEX[colorDe(f.c.calificacion)]), borderColor: rgbHex('#FFFFFF'), borderWidth: 1 });
+      const s = String(f.lec.semana); this.t(s, xv(i) - this.ancho(s, 7.5) / 2, B - 12, 7.5, false, '#5B4E40'); });
+    this.y = B - 26; this.t('Semana del ciclo', (L + R) / 2 - 30, this.y + 2, 7.5, false, '#5B4E40'); this.y -= 12;
+  }
+  evolucion(ev) {
+    if (!ev.length) { this.parrafo('Sin semanas calificadas en el periodo.'); return; }
+    const h = 120; this.asegurar(h + 20); const L = this.M, R = this.W - this.M, B = this.y - h + 14, paso = (R - L) / ev.length, bw = Math.min(24, paso - 4);
+    ev.forEach((c, i) => { const tot = c.verde + c.amarillo + c.azul + c.rojo; let y = B; const x = L + i * paso + (paso - bw) / 2;
+      ['rojo', 'azul', 'amarillo', 'verde'].forEach(k => { const hh = (h - 24) * c[k] / tot; if (hh) { this.p.drawRectangle({ x, y, width: bw, height: hh, color: rgbHex(HEX[k]) }); y += hh; } });
+      const s = String(c.sem); this.t(s, x + bw / 2 - this.ancho(s, 7.5) / 2, B - 11, 7.5, false, '#5B4E40'); });
+    this.y = B - 26; this.parrafo('Proporción de alumnos en cada color por semana del ciclo.', 8, '#5B4E40');
+  }
+  firmas() {
+    const f = estado.config || {}, ps = [[f.director || 'Aurelio May Euan', f.cargoDirector || 'Director'], [f.subdirector || 'Jesús Rodríguez García', f.cargoSubdirector || 'Subdirector del Turno Vespertino']];
+    this.asegurar(90); this.y -= 50; const w = (this.W - 2 * this.M) / 2;
+    ps.forEach(([n, c], i) => { const cx = this.M + w * i + w / 2;
+      this.p.drawLine({ start: { x: cx - 95, y: this.y + 12 }, end: { x: cx + 95, y: this.y + 12 }, thickness: 0.8, color: rgbHex('#1E1A16') });
+      this.t(n, cx - this.ancho(n, 9.5, true) / 2, this.y, 9.5, true); this.t(c, cx - this.ancho(c, 8.5) / 2, this.y - 12, 8.5, false, '#5B4E40'); });
+    this.y -= 30;
+  }
+  async terminar() {
+    const ps = this.pdf.getPages(), hoy = `Generado el ${fechaLarga(new Date())}`;
+    ps.forEach((p, i) => { const s = `Página ${i + 1} de ${ps.length}`;
+      p.drawText(limpiarPDF(hoy), { x: this.M, y: 26, size: 7.5, font: this.f, color: rgbHex('#8A7D6E') });
+      p.drawText(s, { x: this.W - this.M - this.f.widthOfTextAtSize(s, 7.5), y: 26, size: 7.5, font: this.f, color: rgbHex('#8A7D6E') }); });
+    return this.pdf.save();
+  }
+}
+const slugArch = t => normal(t).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+function pdfAlumno(d, a) {
+  const semanas = semanasDe(rep.periodo), e = statsAlumno(a, semanas);
+  d.titulo(`Reporte de comprensión lectora: ${nombreCompleto(a)}`, 15);
+  d.parrafo(`${NOM_GRADO[a.grado]}, grupo ${a.grupo}, número de lista ${a.lista}. CURP ${a.curp}. ${nombrePeriodo(rep.periodo)}.`, 9.5, '#5B4E40');
+  d.cifras([[r1(e.prom), 'Promedio'], [NOMBRE_COLOR[e.color], 'Semáforo'], [`${e.cal.length} de ${e.esperadas}`, 'Lecturas calificadas'], [String(e.faltas + e.noEntrego), 'Faltas o sin entregar']]);
+  if (e.cal.length >= 4) { const ini = prom(e.cal.slice(0, 3).map(f => f.c.calificacion)), fin = prom(e.cal.slice(-3).map(f => f.c.calificacion));
+    d.parrafo(`Promedio de sus primeras lecturas del periodo: ${r1(ini)}. De las más recientes: ${r1(fin)}. ${lecturaTendencia(ini, fin)}`); }
+  d.subtitulo('Trayectoria', 180); if (e.cal.length) d.trayectoria(e.cal); else d.parrafo('Aún no tiene lecturas calificadas en este periodo.');
+  d.subtitulo('Desempeño por criterio (1 a 4)'); d.criterios(e.criterios);
+  d.subtitulo('Detalle por lectura');
+  d.tabla([{ t: 'Sem.', w: 36 }, { t: 'Lectura', w: 290 }, { t: 'Puntos', w: 54, der: true }, { t: 'Resultado', w: 140 }],
+    e.filas.map(f => [f.lec.semana, f.lec.titulo, f.c?.estado === 'calificado' ? `${f.c.puntos}/20` : '', !f.c ? 'Sin registro' : f.c.estado === 'calificado' ? { t: `${r1(f.c.calificacion)}  ${NOMBRE_COLOR[colorDe(f.c.calificacion)]}`, color: colorDe(f.c.calificacion) } : f.c.estado === 'falta' ? 'No asistió' : 'No entregó']));
+  return `reporte-${slugArch(nombreCompleto(a))}.pdf`;
+}
+function pdfGrupo(d, g, gr) {
+  const semanas = semanasDe(rep.periodo), al = estado.alumnos.filter(a => a.estado === 'activo' && a.grado === g && a.grupo === gr).sort(ordenAlumno), st = statsConjunto(al, semanas);
+  d.titulo(`Reporte del grupo ${g}.° ${gr}`); d.parrafo(`${nombrePeriodo(rep.periodo)}. ${al.length} alumnos activos.`, 9.5, '#5B4E40');
+  d.cifras([[r1(st.prom), 'Promedio del grupo'], [st.participacion == null ? '—' : Math.round(st.participacion * 100) + '%', 'Lecturas calificadas'], [String(st.conteo.verde), 'En verde'], [String(st.conteo.rojo), 'En rojo']]);
+  d.subtitulo('Semáforo del grupo'); d.semaforo(st.conteo);
+  d.subtitulo('Desempeño por criterio (1 a 4)'); d.criterios(st.criterios);
+  if (st.debil) d.parrafo(`Criterio con menor desempeño: ${st.debil.nombre}. Se sugiere reforzarlo en las próximas sesiones.`);
+  d.subtitulo('Alumnos');
+  d.tabla([{ t: 'N.°', w: 30 }, { t: 'Alumno', w: 250 }, { t: 'Promedio', w: 96 }, { t: 'Calificadas', w: 74, der: true }, { t: 'Faltas', w: 70, der: true }],
+    st.est.map(e => [e.a.lista, nombreCompleto(e.a), e.prom == null ? 'Sin datos' : { t: `${r1(e.prom)}  ${NOMBRE_COLOR[e.color]}`, color: e.color }, `${e.cal.length} de ${e.esperadas}`, e.faltas + e.noEntrego]));
+  const al2 = alertas(al); if (al2.length) { d.subtitulo('Alumnos que requieren atención'); al2.forEach(x => d.parrafo(`${nombreCompleto(x.a)}: ${x.tipo.toLowerCase()} (${x.det}).`, 9.5)); }
+  d.subtitulo('Evolución del semáforo', 150); d.evolucion(evolucion(al, semanas));
+  d.firmas();
+  return `reporte-grupo-${g}${gr.toLowerCase()}-${slugArch(nombrePeriodo(rep.periodo))}.pdf`;
+}
+function pdfEscuela(d) {
+  const semanas = semanasDe(rep.periodo), activos = estado.alumnos.filter(a => a.estado === 'activo'), st = statsConjunto(activos, semanas);
+  d.titulo('Reporte general de la escuela'); d.parrafo(`${nombrePeriodo(rep.periodo)}. ${activos.length} alumnos activos en ${LISTA_GRUPOS.length} grupos.`, 9.5, '#5B4E40');
+  d.cifras([[r1(st.prom), 'Promedio general'], [st.participacion == null ? '—' : Math.round(st.participacion * 100) + '%', 'Lecturas calificadas'], [String(st.conteo.verde), 'En verde'], [String(st.conteo.rojo), 'En rojo']]);
+  d.subtitulo('Semáforo de la escuela'); d.semaforo(st.conteo);
+  d.subtitulo('Comparativo de grupos');
+  d.tabla([{ t: 'Grupo', w: 50 }, { t: 'Alumnos', w: 56, der: true }, { t: 'Promedio', w: 92 }, { t: 'Verde', w: 44, der: true }, { t: 'Amarillo', w: 54, der: true }, { t: 'Azul', w: 40, der: true }, { t: 'Rojo', w: 40, der: true }, { t: 'Calificado', w: 64, der: true }, { t: 'Criterio más bajo', w: 80 }],
+    LISTA_GRUPOS.map(x => { const s = statsConjunto(activos.filter(a => a.grado === x.grado && a.grupo === x.grupo), semanas);
+      return [`${x.grado}.° ${x.grupo}`, s.est.length, s.prom == null ? 'Sin datos' : { t: `${r1(s.prom)}  ${NOMBRE_COLOR[colorDe(s.prom)]}`, color: colorDe(s.prom) }, s.conteo.verde, s.conteo.amarillo, s.conteo.azul, s.conteo.rojo, s.participacion == null ? '—' : Math.round(s.participacion * 100) + '%', s.debil ? CORTO[s.debil.id] : '—']; }));
+  d.subtitulo('Desempeño por criterio en la escuela (1 a 4)'); d.criterios(st.criterios);
+  d.subtitulo('Evolución del semáforo', 150); d.evolucion(evolucion(activos, semanas));
+  const al = alertas(activos); if (al.length) { d.subtitulo('Alumnos que requieren atención');
+    d.tabla([{ t: 'Alumno', w: 250 }, { t: 'Grupo', w: 60 }, { t: 'Alerta', w: 120 }, { t: 'Detalle', w: 90 }], al.map(x => [nombreCompleto(x.a), `${x.a.grado}.° ${x.a.grupo}`, x.tipo, x.det])); }
+  d.firmas();
+  return `reporte-escuela-${slugArch(nombrePeriodo(rep.periodo))}.pdf`;
+}
+
 /* ---------- Panel directivo ---------- */
 function panelDirectivo() {
-  const tabs = [['alumnos', 'Alumnos'], ['maestros', 'Maestros'], ['datos', 'Claves y respaldo']];
+  const tabs = [['tablero', 'Tablero'], ['alumnos', 'Alumnos'], ['maestros', 'Maestros'], ['datos', 'Ajustes']];
   const foco = document.activeElement && document.activeElement.id === 'filtro-alumnos';
   vista.innerHTML = `<nav class="pestanas" role="tablist">${tabs.map(([id, t]) => `<button type="button" role="tab" data-t="${id}" aria-selected="${estado.pestana === id}">${t}</button>`).join('')}</nav><div id="panel"></div>`;
   vista.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => { estado.pestana = b.dataset.t; panelDirectivo(); }));
-  ({ alumnos: tabAlumnos, maestros: tabMaestros, datos: tabDatos })[estado.pestana]();
+  ({ tablero: () => tablero($('#panel')), alumnos: tabAlumnos, maestros: tabMaestros, datos: tabDatos })[estado.pestana]();
   if (foco) { const f = $('#filtro-alumnos'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
 }
 
@@ -796,6 +1181,16 @@ function formMaestro(m) {
 function tabDatos() {
   const pct = Math.round(estado.claves / LECTURAS.length * 100);
   $('#panel').innerHTML = `
+  <div class="tarjeta"><h2>Firmas de los reportes</h2>
+    <p class="ayuda">Aparecen al final de los reportes PDF de grupo y de escuela.</p>
+    <form id="f-firmas" novalidate>
+      <div class="campo"><label for="fi-dir">Nombre del director</label><input id="fi-dir" value="${esc(estado.config.director || 'Aurelio May Euan')}"></div>
+      <div class="campo"><label for="fi-cdir">Cargo</label><input id="fi-cdir" value="${esc(estado.config.cargoDirector || 'Director')}"></div>
+      <div class="campo"><label for="fi-sub">Nombre del subdirector</label><input id="fi-sub" value="${esc(estado.config.subdirector || 'Jesús Rodríguez García')}"></div>
+      <div class="campo"><label for="fi-csub">Cargo</label><input id="fi-csub" value="${esc(estado.config.cargoSubdirector || 'Subdirector del Turno Vespertino')}"></div>
+      <button class="btn chico" type="submit">Guardar firmas</button>
+    </form>
+  </div>
   <div class="tarjeta"><h2>Claves del docente</h2>
     <p>Las respuestas de las fábulas y las enseñanzas de leyendas y mitos solo se ven dentro de la plataforma.</p>
     <p><b>${estado.claves} de ${LECTURAS.length}</b> claves cargadas.</p>
@@ -812,6 +1207,11 @@ function tabDatos() {
     <div class="campo"><label for="p-lec">Lectura</label><select id="p-lec">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g).map(l => `<option value="${l.id}">Semana ${l.semana}: ${esc(l.titulo)}</option>`).join('')}</optgroup>`).join('')}</select></div>
     <button type="button" class="btn peligro" id="b-borrar-prueba">Borrar calificaciones de esta lectura</button>
   </div>`;
+  $('#f-firmas').addEventListener('submit', async e => {
+    e.preventDefault();
+    const datos = { director: limpiarNombre($('#fi-dir').value), cargoDirector: limpiarNombre($('#fi-cdir').value), subdirector: limpiarNombre($('#fi-sub').value), cargoSubdirector: limpiarNombre($('#fi-csub').value) };
+    await setDoc(doc(db, 'config', 'escuela'), datos); estado.config = datos; aviso('Firmas guardadas.');
+  });
   $('#b-claves').addEventListener('click', () => $('#archivo-claves').click());
   $('#archivo-claves').addEventListener('change', async e => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return;
