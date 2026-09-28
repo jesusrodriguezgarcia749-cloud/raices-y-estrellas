@@ -1,7 +1,7 @@
 /* Raíces y Estrellas · Plataforma docente · Entrega 3: acceso, panel directivo, calificación, tablero y reportes PDF */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, serverTimestamp, addDoc, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, serverTimestamp, addDoc, query, where, Timestamp, increment } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyB0IzYArTNquMl5-zphxdW9G4wcYmPgekA",
@@ -55,15 +55,74 @@ function actualizarRed() { $('#red').hidden = navigator.onLine; }
 addEventListener('online', actualizarRed); addEventListener('offline', actualizarRed); actualizarRed();
 
 /* ---------- Estado ---------- */
-const estado = { rol: null, nombre: null, alumnos: [], maestros: [], claves: 0, califs: {}, aplic: {}, pestana: 'tablero', config: {}, grupoSel: '1G', verBajas: false, filtro: '', subs: [] };
+const estado = { rol: null, nombre: null, alumnos: [], maestros: [], claves: 0, clavesMap: {}, califs: {}, aplic: {}, pestana: 'tablero', config: {}, grupoSel: '1G', verBajas: false, filtro: '', subs: [] };
 
-function escuchar() {
+/* ---------- Memoria en el teléfono y sincronización por cambios ----------
+   Cada colección se guarda en el teléfono (IndexedDB). Al abrir, se muestra lo guardado al instante
+   y a Firebase solo se le piden los documentos que cambiaron desde la última vez. */
+const idb = (() => {
+  let p; const abrir = () => p || (p = new Promise((ok, mal) => { const r = indexedDB.open('raices-y-estrellas', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => ok(r.result); r.onerror = () => mal(r.error); }));
+  const op = (modo, f) => abrir().then(d => new Promise((ok, mal) => { const t = d.transaction('kv', modo), q = f(t.objectStore('kv')); t.oncomplete = () => ok(q && q.result); t.onerror = () => mal(t.error); }));
+  return { get: k => op('readonly', st => st.get(k)).catch(() => null), set: (k, v) => op('readwrite', st => st.put(v, k)).catch(e => console.warn(e)), limpiar: () => op('readwrite', st => st.clear()).catch(() => {}) };
+})();
+const msDe = t => !t ? 0 : typeof t.toMillis === 'function' ? t.toMillis() : t.seconds ? t.seconds * 1000 : 0;
+const MARGEN = 5 * 60 * 1000; // se vuelve a pedir un poco antes de la última marca, por seguridad
+const mem = {}, tGuardar = {};
+function guardarLocal(col) { clearTimeout(tGuardar[col]); tGuardar[col] = setTimeout(() => idb.set('col:' + col, mem[col]), 1200); }
+const SYNC = [
+  { col: 'alumnos', campo: 'actualizado', inicial: () => collection(db, 'alumnos'), aplicar: m => { estado.alumnos = Object.values(m); } },
+  { col: 'maestros', campo: 'actualizado', inicial: () => collection(db, 'maestros'), aplicar: m => { estado.maestros = Object.entries(m).map(([id, d]) => ({ id, ...d })); } },
+  { col: 'calificaciones', campo: 'fecha', inicial: () => query(collection(db, 'calificaciones'), where('ciclo', '==', CICLO)), aplicar: m => { estado.califs = m; } },
+  { col: 'aplicaciones', campo: 'fecha', inicial: () => collection(db, 'aplicaciones'), aplicar: m => { estado.aplic = m; } },
+  { col: 'claves', campo: null, inicial: () => collection(db, 'claves'), aplicar: m => { estado.clavesMap = m; estado.claves = Object.keys(m).length; } },
+];
+let subsDatos = [], versionActual = null;
+
+async function iniciarSync() {
   estado.subs.forEach(f => f()); estado.subs = [];
-  estado.subs.push(onSnapshot(collection(db, 'alumnos'), s => { estado.alumnos = s.docs.map(d => d.data()); refrescar(); }, errorDatos));
-  estado.subs.push(onSnapshot(collection(db, 'maestros'), s => { estado.maestros = s.docs.map(d => ({ id: d.id, ...d.data() })); refrescar(); }, errorDatos));
-  estado.subs.push(onSnapshot(collection(db, 'claves'), s => { estado.claves = s.size; refrescar(); }, errorDatos));
-  estado.subs.push(onSnapshot(doc(db, 'config', 'escuela'), d => { estado.config = d.exists() ? d.data() : {}; }, () => {}));
+  await Promise.all(SYNC.map(async s => { mem[s.col] = (await idb.get('col:' + s.col)) || { docs: {}, marca: 0, completo: false }; s.aplicar(mem[s.col].docs); }));
+  refrescar();
+  versionActual = null;
+  estado.subs.push(onSnapshot(doc(db, 'config', 'escuela'), d => {
+    estado.config = d.exists() ? d.data() : {};
+    const v = estado.config.version || 0, guardada = +(localStorage.getItem('rye_version') || 0);
+    if (versionActual === null) { versionActual = v; arrancarDatos(v !== guardada); }
+    else if (v !== versionActual) { versionActual = v; arrancarDatos(true); } // la dirección borró algo: rehacer memoria
+  }, errorDatos));
+  estado.subs.push(() => { subsDatos.forEach(f => f()); subsDatos = []; });
 }
+async function arrancarDatos(completo) {
+  subsDatos.forEach(f => f()); subsDatos = []; estado.sincronizando = true; refrescar();
+  try {
+    for (const s of SYNC) {
+      const m = mem[s.col];
+      if (completo || !m.completo || !s.campo) {
+        if (!s.campo && m.completo && !completo) { /* claves: ya guardadas */ }
+        else {
+          const snap = await getDocs(s.inicial()); m.docs = {}; m.marca = 0;
+          snap.docs.forEach(d => { const x = d.data(); m.docs[d.id] = x; if (s.campo) m.marca = Math.max(m.marca, msDe(x[s.campo])); });
+          m.completo = true; s.aplicar(m.docs); guardarLocal(s.col);
+        }
+      }
+      if (!s.campo) continue;
+      subsDatos.push(onSnapshot(query(collection(db, s.col), where(s.campo, '>', Timestamp.fromMillis(Math.max(0, m.marca - MARGEN)))), snap => {
+        let cambio = false;
+        snap.docChanges().forEach(ch => {
+          if (ch.type === 'removed') return;
+          const x = ch.doc.data(); if (s.col === 'calificaciones' && x.ciclo !== CICLO) return;
+          m.docs[ch.doc.id] = x; cambio = true; m.marca = Math.max(m.marca, msDe(x[s.campo]));
+        });
+        if (cambio) { s.aplicar(m.docs); guardarLocal(s.col); refrescar(); }
+      }, errorDatos));
+    }
+    localStorage.setItem('rye_version', String(versionActual || 0));
+    estado.sincronizado = new Date();
+  } catch (e) { console.error(e); aviso('No se pudieron actualizar los datos. Se muestra lo guardado en este teléfono.', true); }
+  estado.sincronizando = false; refrescar();
+}
+async function recargarTodo() { for (const s of SYNC) mem[s.col].completo = false; await arrancarDatos(true); aviso('Datos actualizados por completo.'); }
+// Avisar a todos los teléfonos que rehagan su memoria (después de borrar algo).
+async function avisarBorrado() { try { await setDoc(doc(db, 'config', 'escuela'), { version: increment(1) }, { merge: true }); } catch (e) { console.warn(e); } }
 function errorDatos(e) { console.error(e); aviso('No se pudieron leer los datos. Revisa que las reglas de seguridad estén publicadas.', true); }
 let refrescar = () => {};
 
@@ -73,11 +132,14 @@ onAuthStateChanged(auth, usuario => {
   estado.rol = usuario.email === CUENTAS.directivo ? 'directivo' : usuario.email === CUENTAS.maestro ? 'maestro' : null;
   if (!estado.rol) { signOut(auth); return; }
   $('#cab-usuario').hidden = false;
-  escuchar();
+  iniciarSync();
   if (estado.rol === 'directivo') { estado.nombre = 'Directivo'; $('#cab-nombre').textContent = 'Panel directivo'; refrescar = panelDirectivo; panelDirectivo(); }
   else { estado.nombre = localStorage.getItem('rye_docente'); refrescar = pantallaDocente; pantallaDocente(); }
 });
-$('#btn-salir').addEventListener('click', async () => { localStorage.removeItem('rye_docente'); await signOut(auth); });
+$('#btn-salir').addEventListener('click', async () => {
+  if (!confirm('¿Cerrar sesión? Se borrarán de este teléfono los datos guardados de los alumnos.')) return;
+  localStorage.removeItem('rye_docente'); localStorage.removeItem('rye_version'); await idb.limpiar(); await signOut(auth);
+});
 
 function pantallaAcceso() {
   $('#cab-usuario').hidden = true; refrescar = () => {};
@@ -145,24 +207,6 @@ function avance(lec, grado, grupo) {
 
 /* ---------- Docente ---------- */
 const ui = { pantalla: 'inicio', lec: null, grado: null, grupo: null, idx: 0, abiertos: {} };
-let subCalifs = null, subAplic = null, clavesCache = {};
-
-function escucharCalificaciones(ids) {
-  const clave = ids.slice().sort().join(',');
-  if (escucharCalificaciones.clave === clave) return;
-  escucharCalificaciones.clave = clave;
-  if (subCalifs) subCalifs.forEach(f => f()); subCalifs = [];
-  estado.califs = {};
-  for (let i = 0; i < ids.length; i += 30) {
-    const lote = ids.slice(i, i + 30);
-    subCalifs.push(onSnapshot(query(collection(db, 'calificaciones'), where('lectura', 'in', lote)), s => {
-      s.docChanges().forEach(ch => { if (ch.type === 'removed') delete estado.califs[ch.doc.id]; else estado.califs[ch.doc.id] = ch.doc.data(); });
-      refrescar();
-    }, errorDatos));
-  }
-  if (subAplic) subAplic(); 
-  subAplic = onSnapshot(collection(db, 'aplicaciones'), s => { estado.aplic = {}; s.docs.forEach(d => { estado.aplic[d.id] = d.data(); }); refrescar(); }, errorDatos);
-}
 
 function miMaestro() { return estado.maestros.find(m => m.nombre === estado.nombre); }
 
@@ -185,7 +229,6 @@ function pantallaDocente() {
   const ids = new Set(califica.map(l => l.id));
   if (ui.lec) ids.add(ui.lec.id);
   if (aplicaIC) LECTURAS.filter(l => l.semana === Math.max(ultima, 1)).forEach(l => ids.add(l.id));
-  escucharCalificaciones([...ids]);
   if (ui.pantalla === 'calificar' && ui.lec) return pantallaCalificar();
   if (ui.pantalla === 'tablero') return tablero(vista, volverInicio);
   inicioDocente(m, califica, aplicaIC, ultima);
@@ -253,8 +296,12 @@ function registrarFaltas(lec, g, gr) {
     // Las faltas se registran también como "No asistió" si aún no tienen calificación.
     const lote = writeBatch(db);
     lista.forEach(curp => { const id = idCalif(curp, lec.id); if (!califDe(curp, lec.id)) lote.set(doc(db, 'calificaciones', id), { curp, lectura: lec.id, grado: g, grupo: gr, estado: 'falta', niveles: null, puntos: null, calificacion: null, docente: estado.nombre, ciclo: CICLO, fecha: serverTimestamp() }); });
-    await lote.commit();
-    cerrarModal(); aviso(`Lectura registrada en ${g}.° ${gr}: ${lista.length} faltas.`);
+    // En pantalla y en el teléfono de inmediato, aunque no haya señal.
+    mem.aplicaciones.docs[idAplic(lec.id, g, gr)] = { lectura: lec.id, grado: g, grupo: gr, faltas: lista, docente: estado.nombre, fecha: null };
+    lista.forEach(curp => { const id = idCalif(curp, lec.id); if (!califDe(curp, lec.id)) mem.calificaciones.docs[id] = { curp, lectura: lec.id, grado: g, grupo: gr, estado: 'falta', niveles: null, puntos: null, calificacion: null, docente: estado.nombre, ciclo: CICLO, fecha: null }; });
+    guardarLocal('aplicaciones'); guardarLocal('calificaciones');
+    lote.commit().catch(e => console.error(e));
+    cerrarModal(); refrescar(); aviso(`Lectura registrada en ${g}.° ${gr}: ${lista.length} faltas.`);
   });
 }
 
@@ -266,7 +313,6 @@ function abrirCalificar(lecId, g, gr) {
   ui.idx = primero < 0 ? 0 : primero;
   ui.borrador = null;
   pantallaDocente(); scrollTo(0, 0);
-  if (!clavesCache[lecId]) getDoc(doc(db, 'claves', lecId)).then(d => { clavesCache[lecId] = d.exists() ? d.data() : {}; if (ui.pantalla === 'calificar') pantallaCalificar(); }).catch(() => {});
 }
 
 function pantallaCalificar() {
@@ -284,7 +330,7 @@ function pantallaCalificar() {
   const cal = guardada?.estado === 'calificado' ? guardada.calificacion : completos ? puntos / 2 : null;
   const est = guardada?.estado;
   const { total, hechos } = avance(lec, ui.grado, ui.grupo);
-  const clave = clavesCache[lec.id];
+  const clave = estado.clavesMap[lec.id] || (estado.claves ? {} : null);
   const abierto = k => ui.abiertos[k] ? 'open' : '';
   const faltaIC = estado.aplic?.[idAplic(lec.id, ui.grado, ui.grupo)]?.faltas?.includes(a.curp);
 
@@ -349,7 +395,7 @@ function irA(i) { ui.idx = i; ui.borrador = null; pantallaCalificar(); document.
 async function guardarCalif(a, datos) {
   const lec = ui.lec, id = idCalif(a.curp, lec.id), previa = califDe(a.curp, lec.id);
   const reg = { curp: a.curp, lectura: lec.id, grado: ui.grado, grupo: ui.grupo, docente: estado.nombre, ciclo: CICLO, fecha: serverTimestamp(), ...datos };
-  estado.califs[id] = { ...reg }; // respuesta inmediata en pantalla
+  estado.califs[id] = { ...reg, fecha: null }; guardarLocal('calificaciones'); // respuesta inmediata y queda en el teléfono aunque no haya señal
   try { await setDoc(doc(db, 'calificaciones', id), reg); } catch (e) { console.error(e); aviso('No se pudo guardar. Se reintentará al volver la conexión.', true); }
   if (previa && reg.estado !== 'anulada' && (previa.puntos !== reg.puntos || previa.estado !== reg.estado))
     bitacora('corrección de calificación', `${nombreCompleto(a)}, ${lec.id}: ${previa.estado === 'calificado' ? previa.calificacion : previa.estado} a ${reg.estado === 'calificado' ? reg.calificacion : reg.estado} (antes: ${previa.docente || '—'})`);
@@ -484,7 +530,9 @@ async function leerExcelGrupo(archivo, lec, g, gr) {
     e.target.disabled = true; e.target.textContent = 'Guardando…';
     const lote = writeBatch(db);
     aGuardar.forEach(f => lote.set(doc(db, 'calificaciones', idCalif(f.curp, lec.id)), { curp: f.curp, lectura: lec.id, grado: g, grupo: gr, docente: estado.nombre, ciclo: CICLO, fecha: serverTimestamp(), origen: 'excel', ...f.datos }));
-    await lote.commit();
+    aGuardar.forEach(f => { mem.calificaciones.docs[idCalif(f.curp, lec.id)] = { curp: f.curp, lectura: lec.id, grado: g, grupo: gr, docente: estado.nombre, ciclo: CICLO, fecha: null, origen: 'excel', ...f.datos }; });
+    guardarLocal('calificaciones'); refrescar();
+    lote.commit().catch(x => console.error(x));
     aGuardar.filter(f => f.tipo === 'cambio').forEach(f => bitacora('corrección de calificación (Excel)', `${f.nombre}, ${lec.id}: ${f.previa.estado === 'calificado' ? f.previa.calificacion : f.previa.estado} a ${txt(f)}`));
     cerrarModal(); aviso(`${aGuardar.length} calificaciones guardadas.`);
   });
@@ -521,7 +569,7 @@ function nombrePeriodo(p) {
 }
 
 // Resultado de un alumno en un conjunto de semanas.
-function statsAlumno(a, semanas, califs = rep.califs) {
+function statsAlumno(a, semanas, califs = estado.califs) {
   const lecs = LECTURAS.filter(l => l.grado === a.grado && semanas.has(l.semana) && (!a.fechaAlta || a.fechaAlta <= SEMANAS[l.semana - 1].fin)).sort((x, y) => x.semana - y.semana);
   const filas = lecs.map(l => ({ lec: l, c: (() => { const c = califs[idCalif(a.curp, l.id)]; return hecho(c) ? c : null; })() }));
   const cal = filas.filter(f => f.c?.estado === 'calificado');
@@ -542,7 +590,7 @@ function statsConjunto(alumnos, semanas) {
 function evolucion(alumnos, semanas) {
   return [...semanas].sort((a, b) => a - b).map(sem => {
     const c = { sem, verde: 0, amarillo: 0, azul: 0, rojo: 0 };
-    alumnos.forEach(a => { const l = LECTURAS.find(x => x.grado === a.grado && x.semana === sem); const k = l && rep.califs[idCalif(a.curp, l.id)]; if (k?.estado === 'calificado') c[colorDe(k.calificacion)]++; });
+    alumnos.forEach(a => { const l = LECTURAS.find(x => x.grado === a.grado && x.semana === sem); const k = l && estado.califs[idCalif(a.curp, l.id)]; if (k?.estado === 'calificado') c[colorDe(k.calificacion)]++; });
     return c;
   }).filter(c => c.verde + c.amarillo + c.azul + c.rojo > 0);
 }
@@ -593,17 +641,7 @@ function barrasCriterio(criterios) {
 }
 
 /* ---------- Tablero ---------- */
-const rep = { califs: {}, cargado: null, cargando: false, vista: 'resumen', grupo: null, curp: null, periodo: { tipo: 'ciclo' }, filtro: '', historial: null };
-async function cargarReportes(forzar) {
-  if (rep.cargando || (rep.cargado && !forzar)) return;
-  rep.cargando = true; refrescar();
-  try {
-    const s = await getDocs(query(collection(db, 'calificaciones'), where('ciclo', '==', CICLO)));
-    rep.califs = {}; s.docs.forEach(d => { rep.califs[d.id] = d.data(); });
-    rep.cargado = new Date();
-  } catch (e) { console.error(e); aviso('No se pudieron cargar las calificaciones. Revisa la conexión.', true); }
-  rep.cargando = false; refrescar();
-}
+const rep = { vista: 'resumen', grupo: null, curp: null, periodo: { tipo: 'ciclo' }, filtro: '', historial: null };
 function selectorPeriodo() {
   const p = rep.periodo, { ultima } = semanaVigente();
   const quin = Array.from({ length: Math.ceil(Math.max(ultima, 1) / 2) }, (_, i) => i + 1);
@@ -622,8 +660,6 @@ function enlazarPeriodo() {
 }
 
 function tablero(cont, volver) {
-  cargarReportes();
-  if (!rep.cargado) { cont.innerHTML = '<div class="cargando">Cargando calificaciones…</div>'; return; }
   const activos = estado.alumnos.filter(a => a.estado === 'activo');
   if (rep.vista === 'grupo') return vistaGrupo(cont);
   if (rep.vista === 'alumno') return vistaAlumno(cont);
@@ -634,9 +670,9 @@ function tablero(cont, volver) {
   cont.innerHTML = `
   ${volver ? '<button type="button" class="btn-texto oscuro" id="t-volver">‹ Volver</button>' : ''}
   <div class="tarjeta">
-    <div class="tab-cab"><h2>Tablero de avance</h2><button type="button" class="btn-texto oscuro" id="t-act">Actualizar</button></div>
+    <div class="tab-cab"><h2>Tablero de avance</h2><button type="button" class="btn-texto oscuro" id="t-act">Recargar todo</button></div>
     ${selectorPeriodo()}
-    <p class="ayuda">${esc(nombrePeriodo(rep.periodo))}. Actualizado a las ${rep.cargado.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }).replace(/\.$/, '')}</p>
+    <p class="ayuda">${esc(nombrePeriodo(rep.periodo))}. ${estado.sincronizando ? 'Actualizando…' : estado.sincronizado ? 'Al día, se actualiza solo.' : 'Mostrando lo guardado en este teléfono.'}</p>
     <div class="buscar-al"><input id="t-buscar" type="search" class="buscar" placeholder="Buscar alumno por nombre o CURP" value="${esc(rep.filtro)}" aria-label="Buscar alumno">
       ${encontrados.length ? `<div class="resultados">${encontrados.map(a => `<button type="button" data-curp="${a.curp}">${esc(nombreCompleto(a))}<span>${a.grado}.° ${a.grupo}</span></button>`).join('')}</div>` : q.length >= 2 ? '<p class="ayuda">Sin coincidencias.</p>' : ''}</div>
   </div>
@@ -651,13 +687,13 @@ function tablero(cont, volver) {
   <div class="tarjeta"><h2>Captura de la semana ${semAct.sem}</h2><div class="captura-sem">${[1, 2, 3].map(g => { const l = LECTURAS.find(x => x.grado === g && x.semana === semAct.sem);
     const resp = estado.maestros.filter(m => m.activo !== false && (m.asignaturas || []).includes(l.asignatura) && (m.grados || []).includes(g)).map(m => m.nombre);
     return `<div class="cs"><p class="lec-tit"><span class="etq g${g}">${g}.° grado</span> ${esc(l.titulo)}</p><p class="ayuda">Califica ${esc(l.asignatura)}${resp.length ? `: ${esc(resp.join(', '))}` : ' (sin maestro asignado)'}</p>
-      <div class="cs-grupos">${GRUPOS[g].map(gr => { const al2 = alumnosDe(l, g, gr), h = al2.filter(a => { const c = rep.califs[idCalif(a.curp, l.id)]; return hecho(c); }).length;
+      <div class="cs-grupos">${GRUPOS[g].map(gr => { const al2 = alumnosDe(l, g, gr), h = al2.filter(a => { const c = estado.califs[idCalif(a.curp, l.id)]; return hecho(c); }).length;
         return `<span class="cs-g ${al2.length && h === al2.length ? 'lista' : h ? 'parcial' : ''}">${g}.° ${gr}: ${h}/${al2.length}</span>`; }).join('')}</div></div>`; }).join('')}</div></div>
   <div class="tarjeta"><h2>Alertas</h2>${al.length ? `<div class="alertas">${al.map(x => `<button type="button" data-curp="${x.a.curp}"><span class="etiqueta ${x.tipo === 'Dos rojos seguidos' ? 'baja' : 'cambio'}">${x.tipo}</span> ${esc(nombreCompleto(x.a))} <span class="ayuda">${x.a.grado}.° ${x.a.grupo}, ${x.det}</span></button>`).join('')}</div>` : '<p class="vacio">Sin alertas por ahora.</p>'}</div>
   <div class="tarjeta"><h2>Evolución del semáforo</h2>${svgEvolucion(evolucion(activos, semanas))}</div>`;
   enlazarPeriodo();
   $('#t-volver')?.addEventListener('click', volver);
-  $('#t-act').addEventListener('click', () => cargarReportes(true));
+  $('#t-act').addEventListener('click', () => { if (confirm('Esto descarga de nuevo todos los datos. Úsalo solo si algo no se ve actualizado. ¿Continuar?')) recargarTodo(); });
   const bus = $('#t-buscar'); bus.addEventListener('input', e => { rep.filtro = e.target.value; refrescar(); const b = $('#t-buscar'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); });
   cont.querySelectorAll('[data-curp]').forEach(b => b.addEventListener('click', () => { rep.vista = 'alumno'; rep.curp = b.dataset.curp; rep.historial = null; refrescar(); scrollTo(0, 0); }));
   cont.querySelectorAll('.g-card').forEach(b => b.addEventListener('click', () => { rep.vista = 'grupo'; rep.grupo = b.dataset.g; refrescar(); scrollTo(0, 0); }));
@@ -1161,7 +1197,7 @@ function formMaestro(m) {
   </form>`);
   $('#m-borrar')?.addEventListener('click', async () => {
     if (!confirm(`¿Eliminar a ${m.nombre}? Sus calificaciones ya capturadas se conservan. Si solo dejará de participar un tiempo, mejor márcalo como inactivo.`)) return;
-    await deleteDoc(doc(db, 'maestros', m.id)); bitacora('maestro eliminado', m.nombre); cerrarModal(); aviso('Maestro eliminado.');
+    await deleteDoc(doc(db, 'maestros', m.id)); delete mem.maestros.docs[m.id]; SYNC[1].aplicar(mem.maestros.docs); avisarBorrado(); bitacora('maestro eliminado', m.nombre); cerrarModal(); aviso('Maestro eliminado.');
   });
   $('#f-maestro').addEventListener('submit', async e => {
     e.preventDefault();
@@ -1210,7 +1246,7 @@ function tabDatos() {
   $('#f-firmas').addEventListener('submit', async e => {
     e.preventDefault();
     const datos = { director: limpiarNombre($('#fi-dir').value), cargoDirector: limpiarNombre($('#fi-cdir').value), subdirector: limpiarNombre($('#fi-sub').value), cargoSubdirector: limpiarNombre($('#fi-csub').value) };
-    await setDoc(doc(db, 'config', 'escuela'), datos); estado.config = datos; aviso('Firmas guardadas.');
+    await setDoc(doc(db, 'config', 'escuela'), datos, { merge: true }); Object.assign(estado.config, datos); aviso('Firmas guardadas.');
   });
   $('#b-claves').addEventListener('click', () => $('#archivo-claves').click());
   $('#archivo-claves').addEventListener('change', async e => {
@@ -1219,7 +1255,7 @@ function tabDatos() {
     const ids = new Set(LECTURAS.map(l => l.id)), entradas = Object.entries(datos).filter(([k]) => ids.has(k));
     if (!entradas.length) { aviso('El archivo no contiene claves de estas lecturas.', true); return; }
     const lote = writeBatch(db); entradas.forEach(([k, v]) => lote.set(doc(db, 'claves', k), v));
-    try { await lote.commit(); bitacora('claves', `${entradas.length} claves cargadas`); aviso(`${entradas.length} claves cargadas.`); }
+    try { await lote.commit(); entradas.forEach(([k, v]) => { mem.claves.docs[k] = v; }); SYNC[4].aplicar(mem.claves.docs); guardarLocal('claves'); refrescar(); avisarBorrado(); bitacora('claves', `${entradas.length} claves cargadas`); aviso(`${entradas.length} claves cargadas.`); }
     catch (x) { console.error(x); aviso('No se pudieron guardar las claves. Revisa la conexión.', true); }
   });
   $('#b-respaldo').addEventListener('click', async e => {
@@ -1245,6 +1281,7 @@ function tabDatos() {
     e.target.disabled = true;
     const docs = [...cs.docs, ...ap.docs];
     for (let i = 0; i < docs.length; i += 400) { const lote = writeBatch(db); docs.slice(i, i + 400).forEach(d => lote.delete(d.ref)); await lote.commit(); }
+    cs.docs.forEach(d => delete mem.calificaciones.docs[d.id]); ap.docs.forEach(d => delete mem.aplicaciones.docs[d.id]); avisarBorrado();
     bitacora('calificaciones borradas', `${l.id}: ${cs.size} calificaciones, ${ap.size} aplicaciones`);
     e.target.disabled = false; aviso(`Listo: se borraron ${total} registros de «${l.titulo}».`);
   });
