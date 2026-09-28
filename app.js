@@ -1174,14 +1174,124 @@ function tabMaestros() {
   $('#panel').innerHTML = `
   <div class="tarjeta"><h2>Maestros</h2>
     <p class="ayuda">Todos entran con la contraseña general de docentes y eligen su nombre de esta lista. Las asignaturas definen qué lecturas les toca calificar según el calendario.</p>
-    <button type="button" class="btn oro" id="b-maestro">Agregar maestro</button></div>
+    <div class="fila-btn">
+      <button type="button" class="btn oro" id="b-maestro">Agregar maestro</button>
+      <button type="button" class="btn linea" id="b-plantilla-m">Descargar plantilla Excel</button>
+      <button type="button" class="btn linea" id="b-subir-m">Subir lista Excel</button>
+      <input type="file" id="archivo-maestros" accept=".xlsx" hidden>
+    </div></div>
   <div class="tabla-envol"><table><thead><tr><th>Nombre</th><th>Asignaturas</th><th class="ocultar-movil">Grados</th><th></th></tr></thead><tbody>
   ${ms.map(m => `<tr><td>${esc(m.nombre)}${m.activo === false ? ' <span class="etiqueta baja">Inactivo</span>' : ''}</td><td>${esc((m.asignaturas || []).join(', '))}</td><td class="ocultar-movil">${(m.grados || []).map(g => g + '.°').join(', ')}</td>
     <td class="acc"><button type="button" class="btn linea chico" data-m="${m.id}">Editar</button></td></tr>`).join('')}
   </tbody></table>${ms.length ? '' : '<p class="vacio">Aún no hay maestros registrados.</p>'}</div>`;
   $('#b-maestro').addEventListener('click', () => formMaestro());
+  $('#b-plantilla-m').addEventListener('click', plantillaMaestros);
+  $('#b-subir-m').addEventListener('click', () => $('#archivo-maestros').click());
+  $('#archivo-maestros').addEventListener('change', e => { if (e.target.files[0]) leerMaestros(e.target.files[0]); e.target.value = ''; });
   vista.querySelectorAll('[data-m]').forEach(b => b.addEventListener('click', () => formMaestro(estado.maestros.find(m => m.id === b.dataset.m))));
 }
+/* Plantilla Excel de maestros */
+const N_ASIG = 4;
+async function plantillaMaestros() {
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Raíces y Estrellas';
+  const ws = wb.addWorksheet('Maestros', { views: [{ state: 'frozen', ySplit: 1 }] });
+  ws.columns = [{ header: 'ID', key: 'id', width: 10 }, { header: 'Nombre', key: 'nombre', width: 36 },
+    ...Array.from({ length: N_ASIG }, (_, i) => ({ header: `Asignatura ${i + 1}`, key: `a${i}`, width: 28 })),
+    { header: '1.°', key: 'g1', width: 7 }, { header: '2.°', key: 'g2', width: 7 }, { header: '3.°', key: 'g3', width: 7 }];
+  ws.getColumn(1).hidden = true;
+  const cab = ws.getRow(1); cab.font = { bold: true, color: { argb: 'FFFFFFFF' } }; cab.height = 22;
+  cab.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF16213F' } }; c.alignment = { vertical: 'middle', horizontal: 'center' }; });
+  // La plantilla sale con los maestros ya registrados para poder corregirlos.
+  [...estado.maestros].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).forEach(m => {
+    const fila = { id: m.id, nombre: m.nombre }; (m.asignaturas || []).slice(0, N_ASIG).forEach((x, i) => { fila['a' + i] = x; });
+    [1, 2, 3].forEach(g => { fila['g' + g] = (m.grados || []).includes(g) ? 'Sí' : ''; }); ws.addRow(fila);
+  });
+  const listas = wb.addWorksheet('Listas', { state: 'veryHidden' });
+  ASIGNATURAS.forEach((x, i) => { listas.getCell(`A${i + 1}`).value = x; });
+  const colAsig = ['C', 'D', 'E', 'F'].slice(0, N_ASIG);
+  for (let r = 2; r <= 150; r++) {
+    colAsig.forEach(c => { ws.getCell(`${c}${r}`).dataValidation = { type: 'list', allowBlank: true, formulae: [`Listas!$A$1:$A$${ASIGNATURAS.length}`], showErrorMessage: true, errorTitle: 'Asignatura', error: 'Elige una asignatura de la lista.' }; });
+    ['G', 'H', 'I'].forEach(c => { ws.getCell(`${c}${r}`).dataValidation = { type: 'list', allowBlank: true, formulae: ['"Sí"'], showErrorMessage: true, errorTitle: 'Grado', error: 'Elige Sí o deja la celda vacía.' }; ws.getCell(`${c}${r}`).alignment = { horizontal: 'center' }; });
+  }
+  const ins = wb.addWorksheet('Instrucciones'); ins.getColumn(1).width = 100;
+  ['Cómo llenar la lista de maestros', '',
+    '1. Una fila por maestro en la hoja "Maestros". No cambies los títulos de las columnas.',
+    '2. Nombre: tal como aparecerá en la lista para entrar a la plataforma (por ejemplo, Profra. Ana López Pérez).',
+    '3. Asignaturas: elígelas de la lista desplegable. Usa solo las columnas que necesites.',
+    '4. Grados: escribe o elige "Sí" en los grados en que da clase.',
+    '5. Si el archivo ya trae maestros registrados, puedes corregir sus datos o su nombre: se actualizan, no se duplican.',
+    '6. Para agregar maestros nuevos, usa las filas vacías del final.',
+    '7. Subir el archivo nunca elimina ni desactiva a nadie. Eso se hace desde el panel, maestro por maestro.']
+    .forEach((t, i) => { const c = ins.getCell(`A${i + 1}`); c.value = t; if (i === 0) c.font = { bold: true, size: 14 }; });
+  const buf = await wb.xlsx.writeBuffer();
+  descargar('plantilla-maestros-raices-y-estrellas.xlsx', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+}
+
+async function leerMaestros(archivo) {
+  const filas = [];
+  const asigPorNormal = Object.fromEntries(ASIGNATURAS.map(x => [normal(x), x]));
+  const esSi = t => ['si', 'x', '1', 'yes'].includes(normal(t));
+  try {
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await archivo.arrayBuffer());
+    const ws = wb.getWorksheet('Maestros') || wb.worksheets[0];
+    const mapa = {}; ws.getRow(1).eachCell((c, i) => { mapa[normal(c.text)] = i; });
+    const cId = mapa['id'], cN = mapa['nombre'], cA = Array.from({ length: 8 }, (_, i) => mapa[`asignatura ${i + 1}`]).filter(Boolean);
+    const cG = { 1: mapa['1.°'] || mapa['1.o'] || mapa['1'], 2: mapa['2.°'] || mapa['2.o'] || mapa['2'], 3: mapa['3.°'] || mapa['3.o'] || mapa['3'] };
+    if (!cN || !cA.length || !cG[1]) { aviso('El archivo no tiene las columnas de la plantilla. Descarga la plantilla y úsala.', true); return; }
+    ws.eachRow((row, i) => {
+      if (i === 1) return;
+      const v = c => c ? String(row.getCell(c).text ?? '').trim() : '';
+      const nombre = limpiarNombre(v(cN)), crudas = cA.map(v).filter(Boolean);
+      if (!nombre && !crudas.length) return;
+      filas.push({ fila: i, id: v(cId), nombre, crudas, grados: [1, 2, 3].filter(g => esSi(v(cG[g]))) });
+    });
+  } catch (e) { console.error(e); aviso('No se pudo leer el archivo. Verifica que sea un Excel (.xlsx).', true); return; }
+
+  const vistos = new Set();
+  filas.forEach(f => {
+    f.errores = [];
+    f.asignaturas = [...new Set(f.crudas.map(x => asigPorNormal[normal(x)]).filter(Boolean))];
+    const malas = f.crudas.filter(x => !asigPorNormal[normal(x)]);
+    if (!f.nombre) f.errores.push('Falta el nombre');
+    if (malas.length) f.errores.push(`Asignatura no reconocida: ${malas.join(', ')}`);
+    if (!f.asignaturas.length) f.errores.push('Sin asignaturas');
+    if (!f.grados.length) f.errores.push('Sin grados');
+    const clave = normal(f.nombre); if (clave && vistos.has(clave)) f.errores.push('Nombre repetido en el archivo'); vistos.add(clave);
+    f.previo = estado.maestros.find(m => m.id === f.id) || estado.maestros.find(m => normal(m.nombre) === clave);
+    if (f.errores.length) { f.tipo = 'error'; return; }
+    const p = f.previo, igual = p && p.nombre === f.nombre && JSON.stringify([...(p.asignaturas || [])].sort()) === JSON.stringify([...f.asignaturas].sort()) && JSON.stringify([...(p.grados || [])].sort()) === JSON.stringify(f.grados);
+    f.tipo = !p ? 'nuevo' : igual ? 'igual' : 'actualiza';
+  });
+  const n = t => filas.filter(f => f.tipo === t).length, aGuardar = filas.filter(f => f.tipo === 'nuevo' || f.tipo === 'actualiza');
+  const etiq = { nuevo: ['nuevo', 'Nuevo'], actualiza: ['cambio', 'Se actualiza'], igual: ['', 'Sin cambios'], error: ['error', 'Error'] };
+  abrirModal('Revisar maestros antes de guardar', `
+    <div class="resumen"><div><b>${n('nuevo')}</b>nuevos</div><div><b>${n('actualiza')}</b>actualizados</div><div><b>${n('igual')}</b>sin cambios</div><div><b>${n('error')}</b>con error</div></div>
+    ${n('error') ? '<p class="error">Las filas con error no se guardarán. Corrígelas en el Excel y vuelve a subirlo cuando quieras.</p>' : ''}
+    <div class="tabla-envol" style="max-height:45vh;overflow:auto"><table><thead><tr><th>Maestro</th><th>Asignaturas y grados</th><th>Estado</th></tr></thead><tbody>
+    ${filas.sort((a, b) => (a.tipo === 'error' ? -1 : 0) - (b.tipo === 'error' ? -1 : 0) || a.fila - b.fila).map(f => `<tr><td>${esc(f.nombre) || `<em>Fila ${f.fila}</em>`}${f.previo && f.tipo === 'actualiza' && f.previo.nombre !== f.nombre ? `<br><span class="ayuda">Antes: ${esc(f.previo.nombre)}</span>` : ''}</td>
+      <td>${esc(f.asignaturas.join(', '))}<br><span class="ayuda">${f.grados.map(g => g + '.°').join(', ') || '—'}</span></td>
+      <td><span class="etiqueta ${etiq[f.tipo][0]}">${etiq[f.tipo][1]}</span>${f.errores.length ? `<br><span class="ayuda">${esc(f.errores.join('; '))}</span>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="fila-btn" style="margin-top:1rem"><button type="button" class="btn oro" id="confirmar-maestros" ${aGuardar.length ? '' : 'disabled'}>Guardar ${aGuardar.length} maestros</button><button type="button" class="btn linea" id="cancelar-maestros">Cancelar</button></div>`);
+  $('#cancelar-maestros').addEventListener('click', cerrarModal);
+  $('#confirmar-maestros').addEventListener('click', async e => {
+    e.target.disabled = true; e.target.textContent = 'Guardando…';
+    try {
+      const lote = writeBatch(db);
+      aGuardar.forEach(f => {
+        const id = f.previo?.id || (normal(f.nombre).replace(/[^a-z0-9]+/g, '-').slice(0, 60) + '-' + Date.now().toString(36) + f.fila);
+        const datos = { nombre: f.nombre, asignaturas: f.asignaturas, grados: f.grados, activo: f.previo ? f.previo.activo !== false : true, actualizado: serverTimestamp() };
+        lote.set(doc(db, 'maestros', id), datos);
+        mem.maestros.docs[id] = { ...datos, actualizado: null };
+      });
+      SYNC[1].aplicar(mem.maestros.docs); guardarLocal('maestros');
+      await lote.commit();
+      bitacora('lista Excel de maestros', `${n('nuevo')} nuevos, ${n('actualiza')} actualizados`);
+      cerrarModal(); refrescar(); aviso(`Maestros guardados: ${aGuardar.length}.`);
+    } catch (x) { console.error(x); aviso('No se pudo guardar. Revisa la conexión e inténtalo de nuevo.', true); e.target.disabled = false; e.target.textContent = 'Reintentar'; }
+  });
+}
+
 function formMaestro(m) {
   const sel = new Set(m?.asignaturas || []), gr = new Set(m?.grados || [1, 2, 3]);
   abrirModal(m ? 'Editar maestro' : 'Agregar maestro', `
