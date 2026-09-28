@@ -207,3 +207,4 @@ p{margin:0 0 1em}
  .preguntas li{break-inside:avoid;margin-bottom:6pt}
  .renglones{display:block;height:58pt;background:repeating-linear-gradient(to bottom,transparent 0,transparent 18.5pt,#999 18.5pt,#999 19.3pt)}
 }
+.h1-est{display:block;font-size:.34em;letter-spacing:.18em;margin-top:.25em;-webkit-text-fill-color:var(--oro-suave);color:var(--oro-suave)}
