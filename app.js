@@ -183,6 +183,34 @@ function semanaVigente() {
   SEMANAS.forEach(s => { const desde = fISO(s.inicio); desde.setDate(desde.getDate() - 2); if (hoy >= desde) ultima = s.sem; if (hoy >= desde && hoy <= fISO(s.fin)) actual = s; });
   return { actual, ultima }; // ultima: la semana más reciente que ya comenzó
 }
+// Para estadísticas: solo semanas que ya empezaron (lunes), sin la vista previa del sábado.
+const pctPart = st => st.participacion == null ? '—' : Math.round(st.participacion * 100) + '%';
+const txtAplic = st => st.apl.total ? `${st.apl.aplicadas} de ${st.apl.total}` : '—';
+function porRecuperarHTML(pend) {
+  if (!pend.length) return '<p class="vacio">Todas las lecturas transcurridas ya se aplicaron. ¡Al corriente!</p>';
+  const porLec = {}; pend.forEach(p => { (porLec[p.lec.id] ||= { lec: p.lec, grupos: [] }).grupos.push(`${p.grado}.° ${p.grupo}`); });
+  return `<div class="recuperar">${Object.values(porLec).sort((a, b) => a.lec.grado - b.lec.grado || a.lec.semana - b.lec.semana).map(x => `<div class="rec">
+    <p class="lec-tit"><span class="etq g${x.lec.grado}">${x.lec.grado}.° grado</span> Semana ${x.lec.semana}: ${esc(x.lec.titulo)}</p>
+    <p class="ayuda">Califica ${esc(x.lec.asignatura)}. Falta en: ${x.grupos.join(', ')}</p></div>`).join('')}</div>`;
+}
+function semanaTranscurrida() { const hoy = new Date(); hoy.setHours(0, 0, 0, 0); let u = 0; SEMANAS.forEach(s => { if (hoy >= fISO(s.inicio)) u = s.sem; }); return u; }
+const omitidas = () => new Set(estado.config?.omitidas || []);
+// Índice de lecturas aplicadas por grupo: hay al menos una captura (calificación, falta o no entregó) o un registro de aplicación.
+function indiceAplicadas() {
+  const idx = new Set();
+  for (const c of Object.values(estado.califs || {})) if (hecho(c) && c.grado && c.grupo) idx.add(`${c.lectura}_${c.grado}${c.grupo}`);
+  for (const k of Object.keys(estado.aplic || {})) idx.add(k);
+  return idx;
+}
+// Avance del calendario por grupos: lecturas ya transcurridas (no omitidas) y cuáles faltan por aplicar.
+function avanceAplicacion(grupos, semanas, idx = indiceAplicadas()) {
+  const tope = semanaTranscurrida(), om = omitidas(); let total = 0, aplicadas = 0; const pendientes = [];
+  grupos.forEach(x => LECTURAS.filter(l => l.grado === x.grado && l.semana <= tope && (!semanas || semanas.has(l.semana)) && !om.has(l.id)).forEach(l => {
+    if (!estado.alumnos.some(a => a.estado === 'activo' && a.grado === x.grado && a.grupo === x.grupo)) return;
+    total++; if (idx.has(`${l.id}_${x.grado}${x.grupo}`)) aplicadas++; else pendientes.push({ lec: l, grado: x.grado, grupo: x.grupo });
+  }));
+  return { total, aplicadas, pendientes };
+}
 const CRIT = RUBRICA.criterios;
 const NIVEL_CORTO = ['Requiere apoyo', 'En proceso', 'Satisfactorio', 'Sobresaliente'];
 function colorDe(c) { return c == null ? 'gris' : c >= 8.5 ? 'verde' : c >= 7 ? 'amarillo' : c >= 6 ? 'azul' : 'rojo'; }
@@ -243,7 +271,8 @@ function tarjetaGrupo(lec, g, gr, accion) {
 function inicioDocente(m, califica, aplicaIC, ultima) {
   const sem = SEMANAS[Math.max(ultima, 1) - 1];
   const deEstaSemana = califica.filter(l => l.semana === sem.sem);
-  const pendientes = califica.filter(l => l.semana < sem.sem && GRUPOS[l.grado].some(gr => { const a = avance(l, l.grado, gr); return a.hechos < a.total; }));
+  const om = omitidas();
+  const pendientes = califica.filter(l => l.semana < sem.sem && !om.has(l.id) && GRUPOS[l.grado].some(gr => { const a = avance(l, l.grado, gr); return a.hechos < a.total; }));
   let html = `<div class="saludo"><h1>Hola, ${esc(estado.nombre)}</h1>
     <p class="ayuda">Semana ${sem.sem} de 30, del ${rangoSem(sem)}.</p></div>`;
 
@@ -255,6 +284,13 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
           return `<div class="apl"><div><b>${l.grado}.° ${gr}</b>${ap ? `<span class="ok">Aplicada, ${ap.faltas?.length || 0} faltas</span>` : '<span>Sin registrar</span>'}</div>
           <div class="fila-btn"><button type="button" class="btn linea chico" data-hojas="${l.id}" data-g="${l.grado}" data-gr="${gr}" aria-label="Imprimir hojas de ${l.grado}.° ${gr}">Hojas</button><button type="button" class="btn chico" data-faltas="${l.id}" data-g="${l.grado}" data-gr="${gr}" aria-label="Registrar faltas de ${l.grado}.° ${gr}">Faltas</button></div></div>`; }).join('')}</div></div>`).join('') || '<p class="vacio">No tienes grados asignados.</p>'}
     </section>`;
+    const idxA = indiceAplicadas(), rec = LECTURAS.filter(l => l.semana < sem.sem && l.semana <= semanaTranscurrida() && !om.has(l.id) && (m.grados || []).includes(l.grado))
+      .map(l => ({ l, grupos: GRUPOS[l.grado].filter(gr => !idxA.has(`${l.id}_${l.grado}${gr}`) && alumnosDe(l, l.grado, gr).length) })).filter(x => x.grupos.length);
+    if (rec.length) html += `<details class="tarjeta desp-rec"><summary><h2>Lecturas por recuperar <span class="etiqueta baja">${rec.reduce((n, x) => n + x.grupos.length, 0)}</span></h2></summary>
+      <p class="ayuda">Semanas pasadas que estos grupos aún no trabajan. Se sugiere recuperar una por semana, además de la del calendario, en orden.</p>
+      ${rec.map(({ l, grupos }) => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> Semana ${l.semana}: ${esc(l.titulo)}</p><p class="ayuda">Califica ${esc(l.asignatura)}.</p>
+        <div class="grupos-apl">${grupos.map(gr => `<div class="apl"><div><b>${l.grado}.° ${gr}</b><span>Sin aplicar</span></div>
+          <div class="fila-btn"><button type="button" class="btn linea chico" data-hojas="${l.id}" data-g="${l.grado}" data-gr="${gr}">Hojas</button><button type="button" class="btn chico" data-faltas="${l.id}" data-g="${l.grado}" data-gr="${gr}">Faltas</button></div></div>`).join('')}</div></div>`).join('')}</details>`;
   }
 
   html += `<section class="tarjeta"><h2>Esta semana te toca calificar</h2>
@@ -552,7 +588,7 @@ const fechaLarga = d => `${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFull
 
 // Periodo: qué semanas abarca (solo las que ya comenzaron).
 function semanasDe(p) {
-  const { ultima } = semanaVigente(), tope = Math.max(ultima, 1);
+  const tope = Math.max(semanaTranscurrida(), 1);
   let lista = SEMANAS;
   if (p.tipo === 'trimestre') lista = SEMANAS.filter(s => s.trimestre === +p.valor);
   if (p.tipo === 'mes') lista = SEMANAS.filter(s => s.inicio.startsWith(p.valor));
@@ -569,8 +605,9 @@ function nombrePeriodo(p) {
 }
 
 // Resultado de un alumno en un conjunto de semanas.
-function statsAlumno(a, semanas, califs = estado.califs) {
-  const lecs = LECTURAS.filter(l => l.grado === a.grado && semanas.has(l.semana) && (!a.fechaAlta || a.fechaAlta <= SEMANAS[l.semana - 1].fin)).sort((x, y) => x.semana - y.semana);
+function statsAlumno(a, semanas, califs = estado.califs, idx = indiceAplicadas(), om = omitidas()) {
+  const lecs = LECTURAS.filter(l => l.grado === a.grado && semanas.has(l.semana) && !om.has(l.id) && (!a.fechaAlta || a.fechaAlta <= SEMANAS[l.semana - 1].fin)
+    && (idx.has(`${l.id}_${a.grado}${a.grupo}`) || hecho(califs[idCalif(a.curp, l.id)]))).sort((x, y) => x.semana - y.semana);
   const filas = lecs.map(l => ({ lec: l, c: (() => { const c = califs[idCalif(a.curp, l.id)]; return hecho(c) ? c : null; })() }));
   const cal = filas.filter(f => f.c?.estado === 'calificado');
   const p = prom(cal.map(f => f.c.calificacion));
@@ -579,13 +616,15 @@ function statsAlumno(a, semanas, califs = estado.califs) {
     pendientes: filas.filter(f => !f.c).length, esperadas: filas.length, criterios };
 }
 function statsConjunto(alumnos, semanas) {
-  const est = alumnos.map(a => statsAlumno(a, semanas));
+  const idx = indiceAplicadas(), om = omitidas(), est = alumnos.map(a => statsAlumno(a, semanas, estado.califs, idx, om));
   const conteo = Object.fromEntries([...COLORES, 'gris'].map(c => [c, est.filter(e => e.color === c).length]));
   const todas = est.flatMap(e => e.cal);
   const criterios = Object.fromEntries(CRIT.map(k => [k.id, prom(todas.map(f => f.c.niveles?.[k.id]).filter(Boolean))]));
   const esperadas = est.reduce((s, e) => s + e.esperadas, 0), calificadas = todas.length;
   const debil = CRIT.filter(k => criterios[k.id] != null).sort((x, y) => criterios[x.id] - criterios[y.id])[0];
-  return { est, conteo, prom: prom(todas.map(f => f.c.calificacion)), criterios, debil, participacion: esperadas ? calificadas / esperadas : null, calificadas, esperadas };
+  const grupos = [...new Set(alumnos.map(a => a.grado + a.grupo))].map(id => ({ grado: +id[0], grupo: id.slice(1) }));
+  const apl = avanceAplicacion(grupos, semanas, idx);
+  return { est, conteo, prom: prom(todas.map(f => f.c.calificacion)), criterios, debil, participacion: esperadas ? calificadas / esperadas : null, calificadas, esperadas, apl };
 }
 function evolucion(alumnos, semanas) {
   return [...semanas].sort((a, b) => a - b).map(sem => {
@@ -678,17 +717,19 @@ function tablero(cont, volver) {
   </div>
   <div class="tarjeta">
     <div class="tab-cab"><h2>Semáforo de la escuela</h2><button type="button" class="btn oro chico" id="pdf-escuela">PDF de la escuela</button></div>
-    <div class="cifras"><div><b>${r1(esc0.prom)}</b>promedio</div><div><b>${esc0.participacion == null ? '—' : Math.round(esc0.participacion * 100) + '%'}</b>lecturas calificadas</div><div><b>${activos.length}</b>alumnos</div></div>
+    <div class="cifras"><div><b>${r1(esc0.prom)}</b>promedio</div><div><b>${txtAplic(esc0)}</b>lecturas aplicadas</div><div><b>${pctPart(esc0)}</b>participación</div><div><b>${activos.length}</b>alumnos</div></div>
+    <p class="ayuda">Lecturas aplicadas: semanas ya transcurridas que cada grupo ya trabajó (sumando los ${LISTA_GRUPOS.length} grupos). Participación: de los alumnos que debían presentar esas lecturas, cuántos fueron calificados (${esc0.calificadas} de ${esc0.esperadas}); las faltas no bajan el promedio.</p>
     ${barraSemaforo(esc0.conteo)}${leyendaSem(esc0.conteo)}
   </div>
   <div class="tarjeta"><h2>Grupos</h2><div class="g-cards">${LISTA_GRUPOS.map(x => { const st = statsConjunto(activos.filter(a => a.grado === x.grado && a.grupo === x.grupo), semanas);
     return `<button type="button" class="g-card g${x.grado}" data-g="${x.id}"><div class="g-top"><b>${x.grado}.° ${x.grupo}</b><span class="prom ${colorDe(st.prom)}">${r1(st.prom)}</span></div>${barraSemaforo(st.conteo)}
-      <span class="ayuda">${st.est.length} alumnos, ${st.participacion == null ? 'sin datos' : Math.round(st.participacion * 100) + '% calificado'}</span>${st.debil ? `<span class="ayuda">Criterio más bajo: ${esc(CORTO[st.debil.id].toLowerCase())}</span>` : ''}</button>`; }).join('')}</div></div>
+      <span class="ayuda">${st.est.length} alumnos. Aplicadas: ${txtAplic(st)}. Participación: ${pctPart(st)}</span>${st.debil ? `<span class="ayuda">Criterio más bajo: ${esc(CORTO[st.debil.id].toLowerCase())}</span>` : ''}</button>`; }).join('')}</div></div>
   <div class="tarjeta"><h2>Captura de la semana ${semAct.sem}</h2><div class="captura-sem">${[1, 2, 3].map(g => { const l = LECTURAS.find(x => x.grado === g && x.semana === semAct.sem);
     const resp = estado.maestros.filter(m => m.activo !== false && (m.asignaturas || []).includes(l.asignatura) && (m.grados || []).includes(g)).map(m => m.nombre);
     return `<div class="cs"><p class="lec-tit"><span class="etq g${g}">${g}.° grado</span> ${esc(l.titulo)}</p><p class="ayuda">Califica ${esc(l.asignatura)}${resp.length ? `: ${esc(resp.join(', '))}` : ' (sin maestro asignado)'}</p>
       <div class="cs-grupos">${GRUPOS[g].map(gr => { const al2 = alumnosDe(l, g, gr), h = al2.filter(a => { const c = estado.califs[idCalif(a.curp, l.id)]; return hecho(c); }).length;
         return `<span class="cs-g ${al2.length && h === al2.length ? 'lista' : h ? 'parcial' : ''}">${g}.° ${gr}: ${h}/${al2.length}</span>`; }).join('')}</div></div>`; }).join('')}</div></div>
+  <div class="tarjeta"><h2>Lecturas por recuperar</h2><p class="ayuda">Semanas ya transcurridas que algún grupo no ha trabajado. Desaparecen en cuanto se captura la lectura o se registran sus faltas.</p>${porRecuperarHTML(avanceAplicacion(LISTA_GRUPOS).pendientes)}</div>
   <div class="tarjeta"><h2>Alertas</h2>${al.length ? `<div class="alertas">${al.map(x => `<button type="button" data-curp="${x.a.curp}"><span class="etiqueta ${x.tipo === 'Dos rojos seguidos' ? 'baja' : 'cambio'}">${x.tipo}</span> ${esc(nombreCompleto(x.a))} <span class="ayuda">${x.a.grado}.° ${x.a.grupo}, ${x.det}</span></button>`).join('')}</div>` : '<p class="vacio">Sin alertas por ahora.</p>'}</div>
   <div class="tarjeta"><h2>Evolución del semáforo</h2>${svgEvolucion(evolucion(activos, semanas))}</div>`;
   enlazarPeriodo();
@@ -707,13 +748,14 @@ function vistaGrupo(cont) {
   cont.innerHTML = `<button type="button" class="btn-texto oscuro" id="t-atras">‹ Tablero</button>
   <div class="tarjeta"><div class="tab-cab"><h2>${g}.° ${gr}</h2><button type="button" class="btn oro chico" id="pdf-grupo">PDF del grupo</button></div>
     ${selectorPeriodo()}<p class="ayuda">${esc(nombrePeriodo(rep.periodo))}.</p>
-    <div class="cifras"><div><b>${r1(st.prom)}</b>promedio</div><div><b>${st.participacion == null ? '—' : Math.round(st.participacion * 100) + '%'}</b>calificado</div><div><b>${al.length}</b>alumnos</div></div>
+    <div class="cifras"><div><b>${r1(st.prom)}</b>promedio</div><div><b>${txtAplic(st)}</b>lecturas aplicadas</div><div><b>${pctPart(st)}</b>participación (${st.calificadas} de ${st.esperadas})</div><div><b>${al.length}</b>alumnos</div></div>
     ${barraSemaforo(st.conteo)}${leyendaSem(st.conteo)}</div>
   <div class="tarjeta"><h2>Por criterio</h2>${barrasCriterio(st.criterios)}</div>
   <div class="tabla-envol"><table><thead><tr><th>N.°</th><th>Alumno</th><th>Prom.</th><th class="ocultar-movil">Lecturas</th><th class="ocultar-movil">Faltas</th></tr></thead><tbody>
   ${st.est.map(e => `<tr class="fila-al" data-curp="${e.a.curp}"><td class="num">${e.a.lista}</td><td>${esc(nombreCompleto(e.a))}</td><td><span class="prom ${e.color}">${r1(e.prom)}</span></td><td class="ocultar-movil">${e.cal.length} de ${e.esperadas}</td><td class="ocultar-movil">${e.faltas}</td></tr>`).join('')}
   </tbody></table>${al.length ? '' : '<p class="vacio">Sin alumnos.</p>'}</div>
-  <div class="tarjeta" style="margin-top:1rem"><h2>Evolución del grupo</h2>${svgEvolucion(evolucion(al, semanas))}</div>`;
+  <div class="tarjeta" style="margin-top:1rem"><h2>Lecturas por recuperar</h2>${porRecuperarHTML(st.apl.pendientes)}</div>
+  <div class="tarjeta"><h2>Evolución del grupo</h2>${svgEvolucion(evolucion(al, semanas))}</div>`;
   enlazarPeriodo();
   $('#t-atras').addEventListener('click', () => { rep.vista = 'resumen'; refrescar(); scrollTo(0, 0); });
   cont.querySelectorAll('.fila-al').forEach(f => f.addEventListener('click', () => { rep.vista = 'alumno'; rep.curp = f.dataset.curp; rep.historial = null; refrescar(); scrollTo(0, 0); }));
@@ -878,10 +920,13 @@ function pdfAlumno(d, a) {
 function pdfGrupo(d, g, gr) {
   const semanas = semanasDe(rep.periodo), al = estado.alumnos.filter(a => a.estado === 'activo' && a.grado === g && a.grupo === gr).sort(ordenAlumno), st = statsConjunto(al, semanas);
   d.titulo(`Reporte del grupo ${g}.° ${gr}`); d.parrafo(`${nombrePeriodo(rep.periodo)}. ${al.length} alumnos activos.`, 9.5, '#5B4E40');
-  d.cifras([[r1(st.prom), 'Promedio del grupo'], [st.participacion == null ? '—' : Math.round(st.participacion * 100) + '%', 'Lecturas calificadas'], [String(st.conteo.verde), 'En verde'], [String(st.conteo.rojo), 'En rojo']]);
+  d.cifras([[r1(st.prom), 'Promedio del grupo'], [txtAplic(st), 'Lecturas aplicadas'], [pctPart(st), 'Participación'], [String(st.conteo.verde), 'En verde'], [String(st.conteo.rojo), 'En rojo']]);
+  d.parrafo(`Lecturas aplicadas: semanas transcurridas del periodo que el grupo ya trabajó. Participación: ${st.calificadas} de ${st.esperadas} lecturas esperadas fueron calificadas; las faltas y hojas no entregadas no cuentan en el promedio.`, 8.5, '#5B4E40');
   d.subtitulo('Semáforo del grupo'); d.semaforo(st.conteo);
   d.subtitulo('Desempeño por criterio (1 a 4)'); d.criterios(st.criterios);
   if (st.debil) d.parrafo(`Criterio con menor desempeño: ${st.debil.nombre}. Se sugiere reforzarlo en las próximas sesiones.`);
+  if (st.apl.pendientes.length) { d.subtitulo('Lecturas por recuperar');
+    d.tabla([{ t: 'Sem.', w: 40 }, { t: 'Lectura', w: 330 }, { t: 'Califica', w: 150 }], st.apl.pendientes.sort((a, b) => a.lec.semana - b.lec.semana).map(p => [p.lec.semana, p.lec.titulo, p.lec.asignatura])); }
   d.subtitulo('Alumnos');
   d.tabla([{ t: 'N.°', w: 30 }, { t: 'Alumno', w: 250 }, { t: 'Promedio', w: 96 }, { t: 'Calificadas', w: 74, der: true }, { t: 'Faltas', w: 70, der: true }],
     st.est.map(e => [e.a.lista, nombreCompleto(e.a), e.prom == null ? 'Sin datos' : { t: `${r1(e.prom)}  ${NOMBRE_COLOR[e.color]}`, color: e.color }, `${e.cal.length} de ${e.esperadas}`, e.faltas + e.noEntrego]));
@@ -893,12 +938,16 @@ function pdfGrupo(d, g, gr) {
 function pdfEscuela(d) {
   const semanas = semanasDe(rep.periodo), activos = estado.alumnos.filter(a => a.estado === 'activo'), st = statsConjunto(activos, semanas);
   d.titulo('Reporte general de la escuela'); d.parrafo(`${nombrePeriodo(rep.periodo)}. ${activos.length} alumnos activos en ${LISTA_GRUPOS.length} grupos.`, 9.5, '#5B4E40');
-  d.cifras([[r1(st.prom), 'Promedio general'], [st.participacion == null ? '—' : Math.round(st.participacion * 100) + '%', 'Lecturas calificadas'], [String(st.conteo.verde), 'En verde'], [String(st.conteo.rojo), 'En rojo']]);
+  d.cifras([[r1(st.prom), 'Promedio general'], [txtAplic(st), 'Lecturas aplicadas'], [pctPart(st), 'Participación'], [String(st.conteo.verde), 'En verde'], [String(st.conteo.rojo), 'En rojo']]);
+  d.parrafo(`Lecturas aplicadas: suma de las semanas transcurridas que cada grupo ya trabajó. Participación: ${st.calificadas} de ${st.esperadas} lecturas esperadas fueron calificadas; las faltas no cuentan en el promedio.`, 8.5, '#5B4E40');
   d.subtitulo('Semáforo de la escuela'); d.semaforo(st.conteo);
   d.subtitulo('Comparativo de grupos');
-  d.tabla([{ t: 'Grupo', w: 50 }, { t: 'Alumnos', w: 56, der: true }, { t: 'Promedio', w: 92 }, { t: 'Verde', w: 44, der: true }, { t: 'Amarillo', w: 54, der: true }, { t: 'Azul', w: 40, der: true }, { t: 'Rojo', w: 40, der: true }, { t: 'Calificado', w: 64, der: true }, { t: 'Criterio más bajo', w: 80 }],
+  d.tabla([{ t: 'Grupo', w: 42 }, { t: 'Alumnos', w: 52, der: true }, { t: 'Promedio', w: 82 }, { t: 'Verde', w: 36, der: true }, { t: 'Amarillo', w: 48, der: true }, { t: 'Azul', w: 32, der: true }, { t: 'Rojo', w: 32, der: true }, { t: 'Aplicadas', w: 52, der: true }, { t: 'Particip.', w: 50, der: true }, { t: 'Criterio más bajo', w: 94 }],
     LISTA_GRUPOS.map(x => { const s = statsConjunto(activos.filter(a => a.grado === x.grado && a.grupo === x.grupo), semanas);
-      return [`${x.grado}.° ${x.grupo}`, s.est.length, s.prom == null ? 'Sin datos' : { t: `${r1(s.prom)}  ${NOMBRE_COLOR[colorDe(s.prom)]}`, color: colorDe(s.prom) }, s.conteo.verde, s.conteo.amarillo, s.conteo.azul, s.conteo.rojo, s.participacion == null ? '—' : Math.round(s.participacion * 100) + '%', s.debil ? CORTO[s.debil.id] : '—']; }));
+      return [`${x.grado}.° ${x.grupo}`, s.est.length, s.prom == null ? 'Sin datos' : { t: `${r1(s.prom)}  ${NOMBRE_COLOR[colorDe(s.prom)]}`, color: colorDe(s.prom) }, s.conteo.verde, s.conteo.amarillo, s.conteo.azul, s.conteo.rojo, txtAplic(s), pctPart(s), s.debil ? CORTO[s.debil.id] : '—']; }));
+  const pend = avanceAplicacion(LISTA_GRUPOS, semanas).pendientes;
+  if (pend.length) { d.subtitulo('Lecturas por recuperar'); const porLec = {}; pend.forEach(p => { (porLec[p.lec.id] ||= { lec: p.lec, g: [] }).g.push(`${p.grado}.° ${p.grupo}`); });
+    d.tabla([{ t: 'Sem.', w: 36 }, { t: 'Lectura', w: 250 }, { t: 'Grupos', w: 120 }, { t: 'Califica', w: 114 }], Object.values(porLec).sort((a, b) => a.lec.grado - b.lec.grado || a.lec.semana - b.lec.semana).map(x => [x.lec.semana, x.lec.titulo, x.g.join(', '), x.lec.asignatura])); }
   d.subtitulo('Desempeño por criterio en la escuela (1 a 4)'); d.criterios(st.criterios);
   d.subtitulo('Evolución del semáforo', 150); d.evolucion(evolucion(activos, semanas));
   const al = alertas(activos); if (al.length) { d.subtitulo('Alumnos que requieren atención');
@@ -1327,6 +1376,12 @@ function formMaestro(m) {
 function tabDatos() {
   const pct = Math.round(estado.claves / LECTURAS.length * 100);
   $('#panel').innerHTML = `
+  <div class="tarjeta"><h2>Lecturas omitidas</h2>
+    <p class="ayuda">Si se decide no aplicar una lectura a un grado, márcala aquí: deja de contar como pendiente y no afecta las estadísticas. Queda registrada como omitida.</p>
+    <div class="otra"><select id="om-lec" aria-label="Lectura a omitir">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && !omitidas().has(l.id)).map(l => `<option value="${l.id}">Semana ${l.semana}: ${esc(l.titulo)}</option>`).join('')}</optgroup>`).join('')}</select>
+    <button type="button" class="btn linea" id="om-agregar">Marcar como omitida</button></div>
+    ${omitidas().size ? `<ul class="lista-om">${[...omitidas()].map(id => lecturaPorId(id)).filter(Boolean).sort((a, b) => a.grado - b.grado || a.semana - b.semana).map(l => `<li><span>${l.grado}.° grado, semana ${l.semana}: ${esc(l.titulo)}</span><button type="button" class="btn-texto oscuro" data-om-quitar="${l.id}">Quitar</button></li>`).join('')}</ul>` : '<p class="vacio">No hay lecturas omitidas.</p>'}
+  </div>
   <div class="tarjeta"><h2>Firmas de los reportes</h2>
     <p class="ayuda">Aparecen al final de los reportes PDF de grupo y de escuela.</p>
     <form id="f-firmas" novalidate>
@@ -1353,6 +1408,15 @@ function tabDatos() {
     <div class="campo"><label for="p-lec">Lectura</label><select id="p-lec">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g).map(l => `<option value="${l.id}">Semana ${l.semana}: ${esc(l.titulo)}</option>`).join('')}</optgroup>`).join('')}</select></div>
     <button type="button" class="btn peligro" id="b-borrar-prueba">Borrar calificaciones de esta lectura</button>
   </div>`;
+  const guardarOmitidas = async lista => {
+    try { await setDoc(doc(db, 'config', 'escuela'), { omitidas: lista }, { merge: true }); estado.config.omitidas = lista; refrescar(); }
+    catch (x) { console.error(x); aviso('No se pudo guardar. Revisa la conexión.', true); }
+  };
+  $('#om-agregar').addEventListener('click', async () => { const l = lecturaPorId($('#om-lec').value); if (!l) return;
+    if (!confirm(`¿Marcar «${l.titulo}» (${l.grado}.° grado) como omitida? Dejará de contar como pendiente.`)) return;
+    await guardarOmitidas([...omitidas(), l.id]); bitacora('lectura omitida', l.id); aviso('Lectura marcada como omitida.'); });
+  $('#panel').querySelectorAll('[data-om-quitar]').forEach(b => b.addEventListener('click', async () => {
+    await guardarOmitidas([...omitidas()].filter(x => x !== b.dataset.omQuitar)); bitacora('lectura reactivada', b.dataset.omQuitar); aviso('La lectura vuelve a contar.'); }));
   $('#f-firmas').addEventListener('submit', async e => {
     e.preventDefault();
     const datos = { director: limpiarNombre($('#fi-dir').value), cargoDirector: limpiarNombre($('#fi-cdir').value), subdirector: limpiarNombre($('#fi-sub').value), cargoSubdirector: limpiarNombre($('#fi-csub').value) };

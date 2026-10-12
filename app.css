@@ -269,3 +269,17 @@ td.acc{white-space:nowrap;text-align:right}
 .fila-al{cursor:pointer}
 .fila-al:hover{background:#FBF6EA}
 .comparacion{background:#F3EBD8;padding:.6rem .8rem;border-radius:10px}
+
+/* ---------- Lecturas por recuperar y omitidas ---------- */
+.recuperar{display:grid;gap:.6rem}
+.rec{padding:.7rem .9rem;border-radius:12px;border:1px solid var(--linea);background:#fff}
+.rec .lec-tit{font-size:1.02rem;margin-bottom:.2rem}
+.rec .ayuda{margin:0}
+details.desp-rec>summary{cursor:pointer;list-style:none}
+details.desp-rec>summary::-webkit-details-marker{display:none}
+details.desp-rec>summary h2{display:flex;align-items:center;gap:.5rem;margin:0}
+details.desp-rec>summary h2::after{content:"▾";margin-left:auto;font-size:1rem;color:var(--tinta2)}
+details.desp-rec[open]>summary h2::after{content:"▴"}
+details.desp-rec[open]>summary{margin-bottom:.6rem}
+.lista-om{list-style:none;padding:0;margin:1rem 0 0;display:grid;gap:.3rem}
+.lista-om li{display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.5rem .7rem;border-radius:10px;background:#fff;border:1px solid var(--linea);font-size:.95rem}
