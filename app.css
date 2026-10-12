@@ -330,3 +330,40 @@ button.chip-est{cursor:pointer;min-height:40px}
 .hoja-dice b{font:800 1.35rem/1.2 var(--serif);color:var(--noche)}
 .cal-cab .hoja-dice{margin-top:.5rem}
 .hoja-dice span b{font:700 .88rem var(--sans);color:var(--tinta)}
+
+/* ---------- Lecturas por grupo en el tablero ---------- */
+.lec-grupo{list-style:none;margin:.35rem 0 0;padding:.5rem 0 0;border-top:1px dashed var(--linea);display:grid;gap:.35rem}
+.lg{display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap}
+.lg-t{font-family:var(--serif);font-weight:700;font-size:.98rem;line-height:1.25}
+.lg-t em{font:500 .8rem var(--sans);color:var(--tinta2);font-style:normal}
+.lg .chip-est{font-size:.8rem;padding:.2rem .55rem}
+
+/* ---------- Revisión, seguimiento, avisos y apoyos docentes ---------- */
+.badge{display:inline-grid;place-items:center;min-width:1.3rem;height:1.3rem;padding:0 .3rem;margin-left:.25rem;border-radius:999px;background:var(--rojo);color:#fff;font-size:.75rem;font-weight:800}
+.envio{font-size:.82rem;padding:.15rem .55rem;border-radius:999px;white-space:nowrap}
+.envio.pend{background:#FFF1C9;color:#5A4200}
+.envio.ok{background:#DDF0E3;color:var(--jade)}
+.aviso-dir{background:#FFF1C9;border:1.5px solid #EBD48A;border-radius:14px;padding:.75rem 1rem;margin-bottom:1rem}
+.aviso-dir p{margin:.2rem 0 0}
+.rev-lista,.alertas-lista{display:grid;gap:.55rem}
+.rev,.alerta-fila{padding:.7rem .85rem;border-radius:12px;border:1px solid var(--linea);background:#fff}
+.rev p{margin:0 0 .35rem}
+.alerta-fila{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap}
+.sugerencias{margin-top:1rem;padding:.8rem 1rem;border-radius:14px;background:#EEF7F1;border:1px solid #B7DCC3}
+.sugerencias h3{margin-bottom:.4rem}
+.sugerencias ul{margin:0;padding-left:1.2rem}
+.sugerencias li{margin-bottom:.35rem}
+.etiq{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin:.9rem 0 .2rem}
+.etiq .ayuda{width:100%;margin:0}
+.etq-r{padding:.35rem .7rem;border-radius:999px;border:1.5px solid #D6C7A8;background:#fff;font:600 .85rem var(--sans);cursor:pointer;color:var(--tinta)}
+.etq-r.pos[aria-pressed="true"]{background:#DDF0E3;border-color:var(--verde);color:#174A2F}
+.etq-r.neg[aria-pressed="true"]{background:#FCE3C9;border-color:#C9892C;color:#6B3B00}
+.guia{padding-left:1.3rem}
+.guia li{margin-bottom:.4rem}
+.ayuda-pasos section{padding:.6rem 0;border-bottom:1px solid var(--linea)}
+.ayuda-pasos h3{font-size:1.08rem;margin-bottom:.2rem}
+.notas{list-style:none;padding:0;margin:0 0 1rem;display:grid;gap:.4rem}
+.notas li{padding:.5rem .7rem;border-radius:10px;background:#fff;border:1px solid var(--linea);display:grid;gap:.1rem}
+.modal-caja textarea{width:100%;padding:.55rem .8rem;border-radius:12px;border:1.5px solid #CDBB98;background:#fff}
+.tab-cab .fila-btn{gap:.4rem}
+.pestanas button .badge{vertical-align:.1em}
