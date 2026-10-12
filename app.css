@@ -283,3 +283,41 @@ details.desp-rec[open]>summary h2::after{content:"▴"}
 details.desp-rec[open]>summary{margin-bottom:.6rem}
 .lista-om{list-style:none;padding:0;margin:1rem 0 0;display:grid;gap:.3rem}
 .lista-om li{display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.5rem .7rem;border-radius:10px;background:#fff;border:1px solid var(--linea);font-size:.95rem}
+
+/* ---------- Mis lecturas del ciclo y calendario ---------- */
+.resumen-mio{font-size:1.08rem;margin-bottom:.3rem}
+.mis-lec{display:grid;gap:.6rem;margin-top:.8rem}
+.ml{padding:.7rem .85rem;border-radius:12px;border:1px solid var(--linea);background:#fff}
+.ml.hecha{opacity:.65}
+.ml .lec-tit{font-size:1rem;margin-bottom:.45rem}
+.ml-grupos{display:flex;flex-wrap:wrap;gap:.4rem}
+.chip-est{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .7rem;border-radius:999px;border:1.5px solid #D6C7A8;background:#fff;font:700 .9rem var(--sans);color:var(--tinta);white-space:nowrap}
+button.chip-est{cursor:pointer;min-height:40px}
+.chip-est span{font-weight:500;color:var(--tinta2)}
+.chip-est.completo{background:#DDF0E3;border-color:#B7DCC3}
+.chip-est.proceso{background:#FFF1C9;border-color:#EBD48A}
+.chip-est.pendiente{background:#F8E1DF;border-color:#E9B9B4}
+.chip-est.futura,.chip-est.vacio{background:#F1ECE2;color:var(--tinta2)}
+.chip-est.omitida{background:#EEE;color:#777}
+.cal-nav{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.6rem;text-align:center;margin:0 0 .6rem}
+.cal-nav b{display:block;font:800 1.3rem var(--serif)}
+.cal-nav span{font-size:.92rem;color:var(--tinta2)}
+.cal-nav .btn{min-width:46px;font-size:1.3rem}
+.cal-grado table td{font-size:.92rem}
+.pestanas.mini{margin:.6rem 0 0}
+.cuadricula table{min-width:520px}
+.cuadricula th,.cuadricula td{text-align:center;padding:.35rem .3rem}
+.cuadricula td.cel{font-size:.82rem;font-weight:700;border:2px solid #fff}
+.cel.completo{background:#2E8B57;color:#fff}.cel.proceso{background:#E0B321;color:#2A2118}.cel.pendiente{background:#C8403A;color:#fff}
+.cel.futura,.cel.vacio{background:#F1ECE2}.cel.omitida{background:#E4E4E4;color:#777}
+.cuadricula tr.hoy th{background:var(--oro-suave)}
+.cal-grupos{display:grid;gap:.5rem}
+.cal-g{padding:.65rem .8rem;border-radius:12px;border:1px solid var(--linea);background:#fff}
+.cal-g-cab{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.35rem}
+.cal-g-cab b{font:800 1.2rem var(--serif)}
+.cal-g p{margin:.15rem 0;font-size:.95rem}
+.cal-g .et{display:inline-block;min-width:4.6rem;font-weight:700;color:var(--tinta2);font-size:.85rem}
+.cuadricula table{min-width:0;table-layout:fixed}
+.cuadricula th,.cuadricula td{padding:.3rem .1rem;font-size:.78rem}
+.cuadricula td.cel{font-size:.7rem;letter-spacing:-.02em}
+.cuadricula thead th:first-child,.cuadricula tbody th{width:2.4rem}

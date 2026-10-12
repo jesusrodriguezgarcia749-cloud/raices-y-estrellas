@@ -211,6 +211,25 @@ function avanceAplicacion(grupos, semanas, idx = indiceAplicadas()) {
   }));
   return { total, aplicadas, pendientes };
 }
+// Maestros responsables de una asignatura en un grupo (si el maestro no tiene grupos marcados, cubre todo el grado).
+function maestrosDe(asig, g, gr) {
+  return estado.maestros.filter(m => m.activo !== false && (m.asignaturas || []).includes(asig) && (m.grados || []).includes(g) && (!(m.grupos || []).length || m.grupos.includes(`${g}${gr}`))).map(m => m.nombre).sort((a, b) => a.localeCompare(b, 'es'));
+}
+const nombresO = (lista, porDefecto) => lista.length ? lista.join(', ') : porDefecto;
+// Estado de una lectura en un grupo: completo, en proceso, sin iniciar, próxima u omitida.
+function estadoGrupo(lec, g, gr, idx = indiceAplicadas(), om = omitidas()) {
+  const al = alumnosDe(lec, g, gr), hechos = al.filter(a => califDe(a.curp, lec.id));
+  const calificaron = [...new Set(hechos.map(a => califDe(a.curp, lec.id).docente).filter(Boolean))];
+  const ap = estado.aplic?.[idAplic(lec.id, g, gr)];
+  const base = { total: al.length, hechos: hechos.length, calificaron, aplicoIC: !!ap, faltasIC: ap?.faltas?.length || 0, aplico: ap?.docente || '' };
+  if (om.has(lec.id)) return { ...base, clave: 'omitida', texto: 'Omitida' };
+  if (lec.semana > semanaTranscurrida()) return { ...base, clave: 'futura', texto: 'Próxima' };
+  if (!al.length) return { ...base, clave: 'vacio', texto: 'Sin alumnos' };
+  if (hechos.length >= al.length) return { ...base, clave: 'completo', texto: 'Completo' };
+  if (hechos.length || idx.has(`${lec.id}_${g}${gr}`)) return { ...base, clave: 'proceso', texto: `En proceso` };
+  return { ...base, clave: 'pendiente', texto: 'Sin iniciar' };
+}
+const CHIP = { completo: '✅', proceso: '🟡', pendiente: '⚪', futura: '·', omitida: '➖', vacio: '·' };
 const CRIT = RUBRICA.criterios;
 const NIVEL_CORTO = ['Requiere apoyo', 'En proceso', 'Satisfactorio', 'Sobresaliente'];
 function colorDe(c) { return c == null ? 'gris' : c >= 8.5 ? 'verde' : c >= 7 ? 'amarillo' : c >= 6 ? 'azul' : 'rojo'; }
@@ -268,11 +287,12 @@ function tarjetaGrupo(lec, g, gr, accion) {
     <b>${g}.° ${gr}</b><span>${total ? `${hechos} de ${total} calificados` : 'Sin alumnos registrados'}</span><span class="progreso"><i style="width:${pct}%"></i></span></button>`;
 }
 
+const misGrupos = (m, g) => (m?.grupos || []).length ? GRUPOS[g].filter(gr => m.grupos.includes(`${g}${gr}`)) : GRUPOS[g];
 function inicioDocente(m, califica, aplicaIC, ultima) {
   const sem = SEMANAS[Math.max(ultima, 1) - 1];
   const deEstaSemana = califica.filter(l => l.semana === sem.sem);
   const om = omitidas();
-  const pendientes = califica.filter(l => l.semana < sem.sem && !om.has(l.id) && GRUPOS[l.grado].some(gr => { const a = avance(l, l.grado, gr); return a.hechos < a.total; }));
+  const pendientes = califica.filter(l => l.semana < sem.sem && !om.has(l.id) && misGrupos(m, l.grado).some(gr => { const a = avance(l, l.grado, gr); return a.hechos < a.total; }));
   let html = `<div class="saludo"><h1>Hola, ${esc(estado.nombre)}</h1>
     <p class="ayuda">Semana ${sem.sem} de 30, del ${rangoSem(sem)}.</p></div>`;
 
@@ -280,12 +300,12 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
     const lecs = LECTURAS.filter(l => l.semana === sem.sem && (m.grados || []).includes(l.grado));
     html += `<section class="tarjeta"><h2>Esta semana aplicas</h2><p class="ayuda">Imprime las hojas ya ordenadas por número de lista y, al terminar la sesión, marca quién faltó.</p>
       ${lecs.map(l => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> ${esc(l.titulo)}</p>
-        <div class="grupos-apl">${GRUPOS[l.grado].map(gr => { const ap = estado.aplic?.[idAplic(l.id, l.grado, gr)];
+        <div class="grupos-apl">${misGrupos(m, l.grado).map(gr => { const ap = estado.aplic?.[idAplic(l.id, l.grado, gr)];
           return `<div class="apl"><div><b>${l.grado}.° ${gr}</b>${ap ? `<span class="ok">Aplicada, ${ap.faltas?.length || 0} faltas</span>` : '<span>Sin registrar</span>'}</div>
           <div class="fila-btn"><button type="button" class="btn linea chico" data-hojas="${l.id}" data-g="${l.grado}" data-gr="${gr}" aria-label="Imprimir hojas de ${l.grado}.° ${gr}">Hojas</button><button type="button" class="btn chico" data-faltas="${l.id}" data-g="${l.grado}" data-gr="${gr}" aria-label="Registrar faltas de ${l.grado}.° ${gr}">Faltas</button></div></div>`; }).join('')}</div></div>`).join('') || '<p class="vacio">No tienes grados asignados.</p>'}
     </section>`;
     const idxA = indiceAplicadas(), rec = LECTURAS.filter(l => l.semana < sem.sem && l.semana <= semanaTranscurrida() && !om.has(l.id) && (m.grados || []).includes(l.grado))
-      .map(l => ({ l, grupos: GRUPOS[l.grado].filter(gr => !idxA.has(`${l.id}_${l.grado}${gr}`) && alumnosDe(l, l.grado, gr).length) })).filter(x => x.grupos.length);
+      .map(l => ({ l, grupos: misGrupos(m, l.grado).filter(gr => !idxA.has(`${l.id}_${l.grado}${gr}`) && alumnosDe(l, l.grado, gr).length) })).filter(x => x.grupos.length);
     if (rec.length) html += `<details class="tarjeta desp-rec"><summary><h2>Lecturas por recuperar <span class="etiqueta baja">${rec.reduce((n, x) => n + x.grupos.length, 0)}</span></h2></summary>
       <p class="ayuda">Semanas pasadas que estos grupos aún no trabajan. Se sugiere recuperar una por semana, además de la del calendario, en orden.</p>
       ${rec.map(({ l, grupos }) => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> Semana ${l.semana}: ${esc(l.titulo)}</p><p class="ayuda">Califica ${esc(l.asignatura)}.</p>
@@ -295,13 +315,20 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
 
   html += `<section class="tarjeta"><h2>Esta semana te toca calificar</h2>
     ${deEstaSemana.length ? deEstaSemana.map(l => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> ${esc(l.titulo)}</p>
-      <div class="t-grupos">${GRUPOS[l.grado].map(gr => tarjetaGrupo(l, l.grado, gr, 'calificar')).join('')}</div></div>`).join('')
+      <div class="t-grupos">${misGrupos(m, l.grado).map(gr => tarjetaGrupo(l, l.grado, gr, 'calificar')).join('')}</div></div>`).join('')
       : `<p class="vacio">Esta semana la lectura la califican otras asignaturas.</p>`}
   </section>`;
 
-  if (pendientes.length) html += `<section class="tarjeta"><h2>Pendientes de semanas anteriores</h2>
-    ${pendientes.map(l => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> Semana ${l.semana}: ${esc(l.titulo)}</p>
-      <div class="t-grupos">${GRUPOS[l.grado].map(gr => tarjetaGrupo(l, l.grado, gr, 'calificar')).join('')}</div></div>`).join('')}</section>`;
+  // Mis lecturas del ciclo: todo lo que le toca calificar, de la semana 1 a la actual.
+  const idxM = indiceAplicadas(), mias = califica.filter(l => l.semana <= sem.sem).sort((a, b) => b.semana - a.semana || a.grado - b.grado);
+  const filasM = mias.map(l => ({ l, est: misGrupos(m, l.grado).map(gr => ({ gr, e: estadoGrupo(l, l.grado, gr, idxM, om) })) }));
+  const faltan = filasM.reduce((n, f) => n + f.est.filter(x => x.e.clave === 'proceso' || x.e.clave === 'pendiente').length, 0);
+  if (mias.length) html += `<section class="tarjeta"><h2>Mis lecturas del ciclo</h2>
+    <p class="resumen-mio">${faltan ? `Te faltan <b>${faltan}</b> grupos por calificar.` : '¡Vas al corriente! No tienes grupos pendientes.'}</p>
+    <p class="ayuda">✅ completo · 🟡 en proceso · ⚪ sin iniciar. Las lecturas las aplica Integración Curricular y te entrega las hojas en orden de lista; toca un grupo para calificarlo. Las semanas anteriores que no se trabajaron siguen aquí para recuperarlas.</p>
+    <div class="mis-lec">${filasM.map(({ l, est }) => `<div class="ml ${est.every(x => ['completo', 'omitida', 'vacio'].includes(x.e.clave)) ? 'hecha' : ''}">
+      <p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> Semana ${l.semana}: ${esc(l.titulo)}${om.has(l.id) ? ' <span class="etiqueta">Omitida</span>' : ''}</p>
+      <div class="ml-grupos">${est.map(({ gr, e }) => `<button type="button" class="chip-est ${e.clave}" data-accion="calificar" data-lec="${l.id}" data-g="${l.grado}" data-gr="${gr}" ${e.clave === 'omitida' ? 'disabled' : ''}>${CHIP[e.clave]} ${l.grado}.° ${gr} <span>${e.total ? `${e.hechos}/${e.total}` : ''}</span></button>`).join('')}</div></div>`).join('')}</div></section>`;
 
   html += `<button type="button" class="btn oro ancho-total" id="ir-tablero">Consultar alumnos, semáforo y reportes</button>
   <section class="tarjeta"><h2>Calificar otra lectura</h2><p class="ayuda">Por ejemplo, si cubres a un compañero.</p>
@@ -314,7 +341,7 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
   vista.querySelectorAll('[data-hojas]').forEach(b => b.addEventListener('click', () => imprimirHojas(lecturaPorId(b.dataset.hojas), +b.dataset.g, b.dataset.gr)));
   vista.querySelectorAll('[data-faltas]').forEach(b => b.addEventListener('click', () => registrarFaltas(lecturaPorId(b.dataset.faltas), +b.dataset.g, b.dataset.gr)));
   $('#o-ir').addEventListener('click', () => { const l = lecturaPorId($('#o-lec').value);
-    abrirModal('Elige el grupo', `<p>${esc(l.titulo)}</p><div class="t-grupos">${GRUPOS[l.grado].map(gr => `<button type="button" class="t-grupo" data-gr="${gr}"><b>${l.grado}.° ${gr}</b></button>`).join('')}</div>`);
+    abrirModal('Elige el grupo', `<p>${esc(l.titulo)}</p><div class="t-grupos">${misGrupos(m, l.grado).map(gr => `<button type="button" class="t-grupo" data-gr="${gr}"><b>${l.grado}.° ${gr}</b></button>`).join('')}</div>`);
     $('#modal-cuerpo').querySelectorAll('[data-gr]').forEach(b => b.addEventListener('click', () => { cerrarModal(); abrirCalificar(l.id, l.grado, b.dataset.gr); })); });
   $('#cambiar-nombre').addEventListener('click', () => { localStorage.removeItem('rye_docente'); estado.nombre = null; pantallaDocente(); });
   $('#ir-tablero').addEventListener('click', () => { ui.pantalla = 'tablero'; rep.vista = 'resumen'; pantallaDocente(); scrollTo(0, 0); });
@@ -958,11 +985,11 @@ function pdfEscuela(d) {
 
 /* ---------- Panel directivo ---------- */
 function panelDirectivo() {
-  const tabs = [['tablero', 'Tablero'], ['alumnos', 'Alumnos'], ['maestros', 'Maestros'], ['datos', 'Ajustes']];
+  const tabs = [['tablero', 'Tablero'], ['calendario', 'Calendario'], ['alumnos', 'Alumnos'], ['maestros', 'Maestros'], ['datos', 'Ajustes']];
   const foco = document.activeElement && document.activeElement.id === 'filtro-alumnos';
   vista.innerHTML = `<nav class="pestanas" role="tablist">${tabs.map(([id, t]) => `<button type="button" role="tab" data-t="${id}" aria-selected="${estado.pestana === id}">${t}</button>`).join('')}</nav><div id="panel"></div>`;
   vista.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => { estado.pestana = b.dataset.t; panelDirectivo(); }));
-  ({ tablero: () => tablero($('#panel')), alumnos: tabAlumnos, maestros: tabMaestros, datos: tabDatos })[estado.pestana]();
+  ({ tablero: () => tablero($('#panel')), calendario: tabCalendario, alumnos: tabAlumnos, maestros: tabMaestros, datos: tabDatos })[estado.pestana]();
   if (foco) { const f = $('#filtro-alumnos'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
 }
 
@@ -1218,6 +1245,61 @@ async function leerLista(archivo) {
 }
 
 /* Maestros */
+/* Calendario de aplicación y calificación */
+const cal = { modo: 'semana', sem: null };
+function tabCalendario() {
+  const actual = Math.max(semanaVigente().ultima, 1);
+  if (!cal.sem) cal.sem = actual;
+  const idx = indiceAplicadas(), om = omitidas();
+  const lista = LISTA_GRUPOS;
+  let cuerpo = '';
+  if (cal.modo === 'semana') {
+    const s0 = SEMANAS[cal.sem - 1];
+    cuerpo = `<div class="cal-nav"><button type="button" class="btn linea chico" id="c-ant" ${cal.sem === 1 ? 'disabled' : ''} aria-label="Semana anterior">‹</button>
+      <div><b>Semana ${s0.sem} de 30</b><span>${rangoSem(s0)}, trimestre ${['I', 'II', 'III'][s0.trimestre - 1]}${s0.sem === actual ? ' · semana actual' : s0.sem > semanaTranscurrida() ? ' · próxima' : ''}</span></div>
+      <button type="button" class="btn linea chico" id="c-sig" ${cal.sem === 30 ? 'disabled' : ''} aria-label="Semana siguiente">›</button></div>
+      ${cal.sem !== actual ? `<p style="text-align:center"><button type="button" class="btn-texto oscuro" id="c-hoy">Ir a la semana actual</button></p>` : ''}
+      ${[1, 2, 3].map(g => { const l = LECTURAS.find(x => x.grado === g && x.semana === cal.sem);
+        return `<div class="tarjeta cal-grado"><p class="lec-tit"><span class="etq g${g}">${g}.° grado</span> ${esc(l.titulo)}${om.has(l.id) ? ' <span class="etiqueta">Omitida</span>' : ''}</p>
+        <p class="ayuda"><b>Aplica:</b> Integración Curricular. <b>Califica:</b> ${esc(l.asignatura)}.</p>
+        <div class="cal-grupos">${GRUPOS[g].map(gr => { const e = estadoGrupo(l, g, gr, idx, om);
+          return `<div class="cal-g"><div class="cal-g-cab"><b>${g}.° ${gr}</b><span class="chip-est ${e.clave}">${CHIP[e.clave]} ${e.texto}${e.total && !['futura', 'omitida'].includes(e.clave) ? ` <span>${e.hechos}/${e.total}</span>` : ''}</span></div>
+            <p><span class="et">Aplica</span> ${esc(nombresO(maestrosDe('Integración Curricular', g, gr), 'Integración Curricular'))}${e.aplicoIC ? ` <span class="ayuda">(registró ${e.faltasIC} faltas)</span>` : ''}</p>
+            <p><span class="et">Califica</span> ${esc(nombresO(maestrosDe(l.asignatura, g, gr), 'Sin maestro registrado'))}${e.calificaron.length ? ` <span class="ayuda">(capturó: ${esc(e.calificaron.join(', '))})</span>` : ''}</p></div>`; }).join('')}</div></div>`; }).join('')}`;
+  } else {
+    cuerpo = `<div class="tabla-envol cuadricula"><table><thead><tr><th>Sem.</th>${lista.map(x => `<th>${x.grado}.° ${x.grupo}</th>`).join('')}</tr></thead><tbody>
+      ${SEMANAS.map(s0 => `<tr class="${s0.sem === actual ? 'hoy' : ''}"><th scope="row"><button type="button" class="btn-texto oscuro" data-ir="${s0.sem}">${s0.sem}</button></th>${lista.map(x => {
+        const l = LECTURAS.find(y => y.grado === x.grado && y.semana === s0.sem), e = estadoGrupo(l, x.grado, x.grupo, idx, om);
+        return `<td class="cel ${e.clave}" title="${esc(l.titulo)}: ${e.texto}">${['futura', 'omitida', 'vacio'].includes(e.clave) ? (e.clave === 'omitida' ? '➖' : '') : `${e.hechos}/${e.total}`}</td>`; }).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <p class="ayuda">Verde: completo. Amarillo: en proceso. Rojo: semana transcurrida sin iniciar. Gris: próximas. Toca un número de semana para ver el detalle.</p>`;
+  }
+  const pend = avanceAplicacion(lista).pendientes.length;
+  $('#panel').innerHTML = `<div class="tarjeta"><div class="tab-cab"><h2>Calendario</h2><button type="button" class="btn oro chico" id="pdf-cal">PDF del calendario</button></div>
+    <p class="ayuda">Quién aplica (Integración Curricular) y quién califica cada lectura, y su avance por grupo. ${pend ? `Hay <b>${pend}</b> lecturas-grupo de semanas pasadas sin iniciar.` : 'Todas las semanas transcurridas tienen avance.'}</p>
+    <div class="pestanas mini" role="tablist"><button type="button" role="tab" data-modo="semana" aria-selected="${cal.modo === 'semana'}">Por semana</button><button type="button" role="tab" data-modo="ciclo" aria-selected="${cal.modo === 'ciclo'}">Todo el ciclo</button></div></div>
+    ${cuerpo}`;
+  $('#panel').querySelectorAll('[data-modo]').forEach(b => b.addEventListener('click', () => { cal.modo = b.dataset.modo; tabCalendario(); }));
+  $('#c-ant')?.addEventListener('click', () => { cal.sem--; tabCalendario(); });
+  $('#c-sig')?.addEventListener('click', () => { cal.sem++; tabCalendario(); });
+  $('#c-hoy')?.addEventListener('click', () => { cal.sem = actual; tabCalendario(); });
+  $('#panel').querySelectorAll('[data-ir]').forEach(b => b.addEventListener('click', () => { cal.sem = +b.dataset.ir; cal.modo = 'semana'; tabCalendario(); scrollTo(0, 0); }));
+  $('#pdf-cal').addEventListener('click', e => generarPDF(e.target, pdfCalendario));
+}
+function pdfCalendario(d) {
+  const idx = indiceAplicadas(), om = omitidas(), tope = semanaTranscurrida();
+  d.titulo('Calendario de aplicación y calificación');
+  d.parrafo(`Ciclo escolar ${CICLO}. Aplica: Integración Curricular${estado.maestros.some(m => (m.asignaturas || []).includes('Integración Curricular')) ? ` (${maestrosDe('Integración Curricular', 1, 'G').concat(maestrosDe('Integración Curricular', 2, 'G'), maestrosDe('Integración Curricular', 3, 'G')).filter((v, i, a) => a.indexOf(v) === i).join(', ')})` : ''}. Avance por grupo: alumnos ya capturados (calificados o con falta) de los alumnos del grupo. Semanas transcurridas hasta la ${tope}.`, 9, '#5B4E40');
+  const filas = [];
+  SEMANAS.forEach(s0 => [1, 2, 3].forEach(g => { const l = LECTURAS.find(x => x.grado === g && x.semana === s0.sem);
+    const av = om.has(l.id) ? 'Omitida' : s0.sem > tope ? 'Próxima' : GRUPOS[g].map(gr => { const e = estadoGrupo(l, g, gr, idx, om); return `${gr} ${e.total ? `${e.hechos}/${e.total}` : '—'}`; }).join('  ');
+    const nom = nombresO(maestrosDe(l.asignatura, g, GRUPOS[g][0]), '');
+    filas.push([s0.sem, `${g}.°`, l.titulo, nom ? `${l.asignatura}: ${nom}` : l.asignatura, av]); }));
+  d.tabla([{ t: 'Sem.', w: 30 }, { t: 'Grado', w: 36 }, { t: 'Lectura', w: 168 }, { t: 'Califica', w: 150 }, { t: 'Avance por grupo', w: 136 }], filas);
+  d.firmas();
+  return `calendario-raices-y-estrellas-${hoyISO()}.pdf`;
+}
+
 function tabMaestros() {
   const ms = [...estado.maestros].sort((a, b) => (b.activo !== false) - (a.activo !== false) || a.nombre.localeCompare(b.nombre, 'es'));
   $('#panel').innerHTML = `
@@ -1230,7 +1312,7 @@ function tabMaestros() {
       <input type="file" id="archivo-maestros" accept=".xlsx" hidden>
     </div></div>
   <div class="tabla-envol"><table><thead><tr><th>Nombre</th><th>Asignaturas</th><th class="ocultar-movil">Grados</th><th></th></tr></thead><tbody>
-  ${ms.map(m => `<tr><td>${esc(m.nombre)}${m.activo === false ? ' <span class="etiqueta baja">Inactivo</span>' : ''}</td><td>${esc((m.asignaturas || []).join(', '))}</td><td class="ocultar-movil">${(m.grados || []).map(g => g + '.°').join(', ')}</td>
+  ${ms.map(m => `<tr><td>${esc(m.nombre)}${m.activo === false ? ' <span class="etiqueta baja">Inactivo</span>' : ''}</td><td>${esc((m.asignaturas || []).join(', '))}</td><td class="ocultar-movil">${(m.grados || []).map(g => g + '.°').join(', ')}${(m.grupos || []).length ? `<br><span class="ayuda">${m.grupos.map(x => x[0] + '.° ' + x.slice(1)).join(', ')}</span>` : ''}</td>
     <td class="acc"><button type="button" class="btn linea chico" data-m="${m.id}">Editar</button></td></tr>`).join('')}
   </tbody></table>${ms.length ? '' : '<p class="vacio">Aún no hay maestros registrados.</p>'}</div>`;
   $('#b-maestro').addEventListener('click', () => formMaestro());
@@ -1246,14 +1328,14 @@ async function plantillaMaestros() {
   const ws = wb.addWorksheet('Maestros', { views: [{ state: 'frozen', ySplit: 1 }] });
   ws.columns = [{ header: 'ID', key: 'id', width: 10 }, { header: 'Nombre', key: 'nombre', width: 36 },
     ...Array.from({ length: N_ASIG }, (_, i) => ({ header: `Asignatura ${i + 1}`, key: `a${i}`, width: 28 })),
-    { header: '1.°', key: 'g1', width: 7 }, { header: '2.°', key: 'g2', width: 7 }, { header: '3.°', key: 'g3', width: 7 }];
+    { header: '1.°', key: 'g1', width: 7 }, { header: '2.°', key: 'g2', width: 7 }, { header: '3.°', key: 'g3', width: 7 }, { header: 'Grupos (opcional)', key: 'grupos', width: 22 }];
   ws.getColumn(1).hidden = true;
   const cab = ws.getRow(1); cab.font = { bold: true, color: { argb: 'FFFFFFFF' } }; cab.height = 22;
   cab.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF16213F' } }; c.alignment = { vertical: 'middle', horizontal: 'center' }; });
   // La plantilla sale con los maestros ya registrados para poder corregirlos.
   [...estado.maestros].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).forEach(m => {
     const fila = { id: m.id, nombre: m.nombre }; (m.asignaturas || []).slice(0, N_ASIG).forEach((x, i) => { fila['a' + i] = x; });
-    [1, 2, 3].forEach(g => { fila['g' + g] = (m.grados || []).includes(g) ? 'Sí' : ''; }); ws.addRow(fila);
+    [1, 2, 3].forEach(g => { fila['g' + g] = (m.grados || []).includes(g) ? 'Sí' : ''; }); fila.grupos = (m.grupos || []).map(x => `${x[0]}${x.slice(1)}`).join(', '); ws.addRow(fila);
   });
   const listas = wb.addWorksheet('Listas', { state: 'veryHidden' });
   ASIGNATURAS.forEach((x, i) => { listas.getCell(`A${i + 1}`).value = x; });
@@ -1269,8 +1351,9 @@ async function plantillaMaestros() {
     '3. Asignaturas: elígelas de la lista desplegable. Usa solo las columnas que necesites.',
     '4. Grados: escribe o elige "Sí" en los grados en que da clase.',
     '5. Si el archivo ya trae maestros registrados, puedes corregir sus datos o su nombre: se actualizan, no se duplican.',
-    '6. Para agregar maestros nuevos, usa las filas vacías del final.',
-    '7. Subir el archivo nunca elimina ni desactiva a nadie. Eso se hace desde el panel, maestro por maestro.']
+    '6. Grupos (opcional): si el maestro atiende solo algunos grupos, escríbelos separados por coma, por ejemplo: 1G, 1H. Si lo dejas vacío, cubre todos los grupos de sus grados.',
+    '7. Para agregar maestros nuevos, usa las filas vacías del final.',
+    '8. Subir el archivo nunca elimina ni desactiva a nadie. Eso se hace desde el panel, maestro por maestro.']
     .forEach((t, i) => { const c = ins.getCell(`A${i + 1}`); c.value = t; if (i === 0) c.font = { bold: true, size: 14 }; });
   const buf = await wb.xlsx.writeBuffer();
   descargar('plantilla-maestros-raices-y-estrellas.xlsx', new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
@@ -1285,6 +1368,7 @@ async function leerMaestros(archivo) {
     const ws = wb.getWorksheet('Maestros') || wb.worksheets[0];
     const mapa = {}; ws.getRow(1).eachCell((c, i) => { mapa[normal(c.text)] = i; });
     const cId = mapa['id'], cN = mapa['nombre'], cA = Array.from({ length: 8 }, (_, i) => mapa[`asignatura ${i + 1}`]).filter(Boolean);
+    const cGr = mapa['grupos (opcional)'] || mapa['grupos'];
     const cG = { 1: mapa['1.°'] || mapa['1.o'] || mapa['1'], 2: mapa['2.°'] || mapa['2.o'] || mapa['2'], 3: mapa['3.°'] || mapa['3.o'] || mapa['3'] };
     if (!cN || !cA.length || !cG[1]) { aviso('El archivo no tiene las columnas de la plantilla. Descarga la plantilla y úsala.', true); return; }
     ws.eachRow((row, i) => {
@@ -1292,7 +1376,7 @@ async function leerMaestros(archivo) {
       const v = c => c ? String(row.getCell(c).text ?? '').trim() : '';
       const nombre = limpiarNombre(v(cN)), crudas = cA.map(v).filter(Boolean);
       if (!nombre && !crudas.length) return;
-      filas.push({ fila: i, id: v(cId), nombre, crudas, grados: [1, 2, 3].filter(g => esSi(v(cG[g]))) });
+      filas.push({ fila: i, id: v(cId), nombre, crudas, grados: [1, 2, 3].filter(g => esSi(v(cG[g]))), gruposTxt: v(cGr) });
     });
   } catch (e) { console.error(e); aviso('No se pudo leer el archivo. Verifica que sea un Excel (.xlsx).', true); return; }
 
@@ -1301,6 +1385,10 @@ async function leerMaestros(archivo) {
     f.errores = [];
     f.asignaturas = [...new Set(f.crudas.map(x => asigPorNormal[normal(x)]).filter(Boolean))];
     const malas = f.crudas.filter(x => !asigPorNormal[normal(x)]);
+    f.grupos = [...new Set([...String(f.gruposTxt || '').matchAll(/([123])\s*\.?\s*[°ºo]?\s*([GHI])/gi)].map(x => x[1] + x[2].toUpperCase()))];
+    const grInval = f.grupos.filter(x => !(GRUPOS[x[0]] || []).includes(x.slice(1)) || !f.grados.includes(+x[0]));
+    if (f.gruposTxt && !f.grupos.length) f.errores.push('Grupos no reconocidos (escribe, por ejemplo, 1G, 1H)');
+    if (grInval.length) f.errores.push(`Grupo fuera de sus grados o inexistente: ${grInval.join(', ')}`);
     if (!f.nombre) f.errores.push('Falta el nombre');
     if (malas.length) f.errores.push(`Asignatura no reconocida: ${malas.join(', ')}`);
     if (!f.asignaturas.length) f.errores.push('Sin asignaturas');
@@ -1308,7 +1396,7 @@ async function leerMaestros(archivo) {
     const clave = normal(f.nombre); if (clave && vistos.has(clave)) f.errores.push('Nombre repetido en el archivo'); vistos.add(clave);
     f.previo = estado.maestros.find(m => m.id === f.id) || estado.maestros.find(m => normal(m.nombre) === clave);
     if (f.errores.length) { f.tipo = 'error'; return; }
-    const p = f.previo, igual = p && p.nombre === f.nombre && JSON.stringify([...(p.asignaturas || [])].sort()) === JSON.stringify([...f.asignaturas].sort()) && JSON.stringify([...(p.grados || [])].sort()) === JSON.stringify(f.grados);
+    const p = f.previo, igual = p && p.nombre === f.nombre && JSON.stringify([...(p.asignaturas || [])].sort()) === JSON.stringify([...f.asignaturas].sort()) && JSON.stringify([...(p.grados || [])].sort()) === JSON.stringify(f.grados) && JSON.stringify([...(p.grupos || [])].sort()) === JSON.stringify([...f.grupos].sort());
     f.tipo = !p ? 'nuevo' : igual ? 'igual' : 'actualiza';
   });
   const n = t => filas.filter(f => f.tipo === t).length, aGuardar = filas.filter(f => f.tipo === 'nuevo' || f.tipo === 'actualiza');
@@ -1318,7 +1406,7 @@ async function leerMaestros(archivo) {
     ${n('error') ? '<p class="error">Las filas con error no se guardarán. Corrígelas en el Excel y vuelve a subirlo cuando quieras.</p>' : ''}
     <div class="tabla-envol" style="max-height:45vh;overflow:auto"><table><thead><tr><th>Maestro</th><th>Asignaturas y grados</th><th>Estado</th></tr></thead><tbody>
     ${filas.sort((a, b) => (a.tipo === 'error' ? -1 : 0) - (b.tipo === 'error' ? -1 : 0) || a.fila - b.fila).map(f => `<tr><td>${esc(f.nombre) || `<em>Fila ${f.fila}</em>`}${f.previo && f.tipo === 'actualiza' && f.previo.nombre !== f.nombre ? `<br><span class="ayuda">Antes: ${esc(f.previo.nombre)}</span>` : ''}</td>
-      <td>${esc(f.asignaturas.join(', '))}<br><span class="ayuda">${f.grados.map(g => g + '.°').join(', ') || '—'}</span></td>
+      <td>${esc(f.asignaturas.join(', '))}<br><span class="ayuda">${f.grados.map(g => g + '.°').join(', ') || '—'}${f.grupos.length ? `; grupos ${f.grupos.join(', ')}` : ''}</span></td>
       <td><span class="etiqueta ${etiq[f.tipo][0]}">${etiq[f.tipo][1]}</span>${f.errores.length ? `<br><span class="ayuda">${esc(f.errores.join('; '))}</span>` : ''}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="fila-btn" style="margin-top:1rem"><button type="button" class="btn oro" id="confirmar-maestros" ${aGuardar.length ? '' : 'disabled'}>Guardar ${aGuardar.length} maestros</button><button type="button" class="btn linea" id="cancelar-maestros">Cancelar</button></div>`);
@@ -1329,7 +1417,7 @@ async function leerMaestros(archivo) {
       const lote = writeBatch(db);
       aGuardar.forEach(f => {
         const id = f.previo?.id || (normal(f.nombre).replace(/[^a-z0-9]+/g, '-').slice(0, 60) + '-' + Date.now().toString(36) + f.fila);
-        const datos = { nombre: f.nombre, asignaturas: f.asignaturas, grados: f.grados, activo: f.previo ? f.previo.activo !== false : true, actualizado: serverTimestamp() };
+        const datos = { nombre: f.nombre, asignaturas: f.asignaturas, grados: f.grados, grupos: f.grupos, activo: f.previo ? f.previo.activo !== false : true, actualizado: serverTimestamp() };
         lote.set(doc(db, 'maestros', id), datos);
         mem.maestros.docs[id] = { ...datos, actualizado: null };
       });
@@ -1350,6 +1438,9 @@ function formMaestro(m) {
       <div class="chips">${ASIGNATURAS.map(a => `<label><input type="checkbox" name="asig" value="${esc(a)}" ${sel.has(a) ? 'checked' : ''}>${esc(a)}</label>`).join('')}</div></fieldset>
     <fieldset class="campo" style="border:0;padding:0"><legend style="font-weight:700;margin-bottom:.4rem">Grados en los que da clase</legend>
       <div class="chips">${[1, 2, 3].map(g => `<label><input type="checkbox" name="grado" value="${g}" ${gr.has(g) ? 'checked' : ''}>${NOM_GRADO[g]}</label>`).join('')}</div></fieldset>
+    <fieldset class="campo" style="border:0;padding:0"><legend style="font-weight:700;margin-bottom:.4rem">Grupos (opcional)</legend>
+      <div class="chips">${LISTA_GRUPOS.map(x => `<label><input type="checkbox" name="grupo" value="${x.id}" ${(m?.grupos || []).includes(x.id) ? 'checked' : ''}>${x.grado}.° ${x.grupo}</label>`).join('')}</div>
+      <span class="ayuda">Márcalos si el maestro atiende solo algunos grupos; así el calendario indica exactamente quién aplica o califica en cada uno. Si no marcas ninguno, cubre todos los grupos de sus grados.</span></fieldset>
     ${m ? `<label class="check" style="margin-bottom:1rem"><input type="checkbox" id="m-activo" ${m.activo !== false ? 'checked' : ''}> Activo (aparece en la lista para entrar)</label>` : ''}
     <p id="m-error" class="error" role="alert"></p>
     <div class="fila-btn"><button class="btn oro" type="submit">Guardar</button>${m ? '<button type="button" class="btn peligro" id="m-borrar">Eliminar maestro</button>' : ''}</div>
@@ -1363,11 +1454,12 @@ function formMaestro(m) {
     const nombre = limpiarNombre($('#m-nombre').value);
     const asignaturas = [...document.querySelectorAll('[name="asig"]:checked')].map(x => x.value);
     const grados = [...document.querySelectorAll('[name="grado"]:checked')].map(x => +x.value);
+    const grupos = [...document.querySelectorAll('[name="grupo"]:checked')].map(x => x.value).filter(x => grados.includes(+x[0]));
     if (!nombre) { $('#m-error').textContent = 'Escribe el nombre del maestro.'; return; }
     if (!asignaturas.length) { $('#m-error').textContent = 'Marca al menos una asignatura.'; return; }
     if (!grados.length) { $('#m-error').textContent = 'Marca al menos un grado.'; return; }
     const id = m?.id || (normal(nombre).replace(/[^a-z0-9]+/g, '-').slice(0, 60) + '-' + Date.now().toString(36));
-    await setDoc(doc(db, 'maestros', id), { nombre, asignaturas, grados, activo: m ? $('#m-activo').checked : true, actualizado: serverTimestamp() });
+    await setDoc(doc(db, 'maestros', id), { nombre, asignaturas, grados, grupos, activo: m ? $('#m-activo').checked : true, actualizado: serverTimestamp() });
     bitacora(m ? 'edición de maestro' : 'alta de maestro', nombre); cerrarModal(); aviso('Maestro guardado.');
   });
 }
