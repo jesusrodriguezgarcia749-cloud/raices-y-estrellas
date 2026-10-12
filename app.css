@@ -367,3 +367,16 @@ button.chip-est{cursor:pointer;min-height:40px}
 .modal-caja textarea{width:100%;padding:.55rem .8rem;border-radius:12px;border:1.5px solid #CDBB98;background:#fff}
 .tab-cab .fila-btn{gap:.4rem}
 .pestanas button .badge{vertical-align:.1em}
+
+/* Guía rápida de la rúbrica */
+.crit-p{font-size:.86rem;color:var(--tinta2);margin:-.2rem 0 .4rem;line-height:1.35}
+.guia-rub{background:#FBF6EA;border:1px solid #EFE4CD;border-radius:10px;padding:.35rem .7rem;margin:0 0 .55rem;font-size:.86rem}
+.guia-rub summary{cursor:pointer;font-weight:700;color:#7A5B1E;list-style:none;padding:.15rem 0}
+.guia-rub summary::-webkit-details-marker{display:none}
+.guia-rub[open] summary{margin-bottom:.3rem}
+.guia-rub ul{list-style:none;margin:0;padding:0;display:grid;gap:.3rem}
+.guia-rub li{display:flex;gap:.5rem;align-items:baseline;line-height:1.3}
+.gn{flex:none;display:inline-grid;place-items:center;width:1.4rem;height:1.4rem;border-radius:50%;font-size:.78rem;color:#fff;background:#8A7F6E}
+.gn.n4{background:#2E8B67}.gn.n3{background:#C99A2E}.gn.n2{background:#3D6FB6}.gn.n1{background:#C0453A}
+.guia-tip{margin:.45rem 0 .1rem;color:var(--tinta2)}
+.aviso-noap{background:#FFF6DD;border:1px solid #EBCB7A;border-radius:10px;padding:.65rem .8rem;font-size:.9rem;margin:.7rem 0 0}

@@ -246,6 +246,34 @@ function lecturasGrupoHTML(g, gr, semanas, compacto) {
 const CHIP = { completo: '✅', proceso: '🟡', pendiente: '⚪', futura: '·', omitida: '➖', vacio: '·' };
 const CRIT = RUBRICA.criterios;
 const NIVEL_CORTO = ['Requiere apoyo', 'En proceso', 'Satisfactorio', 'Sobresaliente'];
+/* Guía rápida para calificar cada criterio: pregunta guía, qué significa cada nivel y un tip. */
+const CENTRAL_G = { 1: '¿Qué animal es o cuál es la moraleja de la fábula?', 2: '¿Cuál es el mensaje de la leyenda?', 3: '¿Qué explica o enseña el mito?' };
+const GUIA_RUB = {
+  literal: { p: () => '¿Recupera los datos que <b>sí dice</b> el texto (quién, qué, dónde, cuándo, características)?',
+    n: ['No identifica los datos del texto.', 'Solo algunos datos, o confunde otros.', 'La mayoría de los datos, con detalles menores omitidos.', 'Todos los datos, con precisión.'],
+    tip: 'Normalmente se ve en la primera pregunta.' },
+  inferencial: { p: () => '¿Deduce lo que el texto <b>no dice directamente</b> (causas, consecuencias, por qué, para qué)?',
+    n: ['Se queda en lo que dice el texto o copia sin deducir.', 'Solo deduce relaciones simples.', 'Deduce la mayoría, con apoyo ocasional.', 'Deduce con claridad causas y consecuencias.'],
+    tip: 'Se ve en las preguntas de «¿por qué…?» o «¿para qué…?».' },
+  critico: { p: () => '¿Da una <b>opinión propia</b> y la justifica?',
+    n: ['No opina, o lo que dice no tiene relación con el texto.', 'Opinión simple («está bien», «me gustó») sin explicar.', 'Opinión razonada, pero con argumentos breves.', 'Argumenta con razones claras y lo relaciona con su vida o contexto.'],
+    tip: 'Se ve en las preguntas de «¿qué opinas…?» o «¿qué harías…?».' },
+  central: { p: g => `${CENTRAL_G[g]} ¿Lo justifica con pistas del texto?`,
+    n: ['No lo identifica.', 'Lo identifica solo con ayuda del docente.', 'Lo identifica con una justificación general.', 'Lo identifica y lo justifica con pistas precisas del texto.'],
+    tip: 'No basta con acertar: fíjate en cómo lo justifica.' },
+  escrita: { p: () => '¿Se entiende lo que quiso decir? ¿Respondió completo?',
+    n: ['No responde o no se entiende.', 'Respuestas breves o poco claras.', 'Claras, pero incompletas en algún punto.', 'Claras, completas y ordenadas.'],
+    tip: 'No es para revisar ortografía a detalle, sino si se entiende.' }
+};
+const guiaAbierta = id => { try { const v = localStorage.getItem('rye_guia_' + id); return v == null ? true : v === '1'; } catch (e) { return true; } };
+const guiaGuardar = (id, v) => { try { localStorage.setItem('rye_guia_' + id, v ? '1' : '0'); } catch (e) { } };
+function guiaCritHTML(c, g) {
+  const x = GUIA_RUB[c.id]; if (!x) return '';
+  return `<p class="crit-p">${x.p(g)}</p>
+    <details class="guia-rub" data-guia="${c.id}" ${guiaAbierta(c.id) ? 'open' : ''}><summary>ⓘ ¿Cómo califico?</summary>
+      <ul>${[4, 3, 2, 1].map(n => `<li><b class="gn n${n}">${n}</b> ${esc(x.n[n - 1])}</li>`).join('')}</ul>
+      <p class="guia-tip">💡 ${esc(x.tip)}</p></details>`;
+}
 function colorDe(c) { return c == null ? 'gris' : c >= 8.5 ? 'verde' : c >= 7 ? 'amarillo' : c >= 6 ? 'azul' : 'rojo'; }
 const NOMBRE_COLOR = { verde: 'Verde', amarillo: 'Amarillo', azul: 'Azul', rojo: 'Rojo', gris: 'Sin calificar' };
 const lecturaPorId = id => LECTURAS.find(l => l.id === id);
@@ -312,6 +340,8 @@ function resumenLec(m, l, idx, om) {
   return { clave, tot, hechos, aplicada: es.length && es.every(e => e.aplicoIC || e.hechos), algunaAplicada: es.some(e => e.aplicoIC || e.hechos) };
 }
 const TXT_RES = { completo: 'completa ✅', proceso: 'en proceso', pendiente: 'sin iniciar', omitida: 'omitida', vacio: 'sin alumnos' };
+// Estado de aplicación de una lectura en todos los grupos de su grado.
+function aplicadaEscuela(l, idx = indiceAplicadas()) { const gs = GRUPOS[l.grado] || [], n = gs.filter(gr => idx.has(`${l.id}_${l.grado}${gr}`)).length; return !n ? 'sin aplicar' : n === gs.length ? 'ya aplicada' : 'aplicada en parte'; }
 const optLec = (l, r, extra = '') => `${l.grado}.° grado · ${l.titulo}  (sem. ${l.semana}${extra ? ', ' + extra : ''})`;
 
 function inicioDocente(m, califica, aplicaIC, ultima) {
@@ -353,11 +383,14 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
       <select id="sel-cal" class="sel-grande" aria-label="Lectura a calificar">
         ${[1, 2, 3].filter(g => mias.some(l => l.grado === g)).map(g => `<optgroup label="${NOM_GRADO[g]}">${mias.filter(l => l.grado === g).map(l => { const r = res[l.id];
           return `<option value="${l.id}" ${l.id === ui.selCal ? 'selected' : ''}>${esc(optLec(l, r, `${TXT_RES[r.clave]}${r.clave === 'proceso' ? ` ${r.hechos}/${r.tot}` : ''}`))}</option>`; }).join('')}</optgroup>`).join('')}
-        <option value="__otra" ${ui.selCal === '__otra' ? 'selected' : ''}>Otra lectura (cubrir a un compañero)…</option>
+        <option value="__otra" ${ui.selCal === '__otra' ? 'selected' : ''}>Otra lectura (atrasada o de un compañero)…</option>
       </select>
       ${lc ? `<div class="hoja-dice"><span>Verifica que las hojas digan:</span><b>${esc(lc.titulo)}</b><span>${NOM_GRADO[lc.grado]}, semana ${lc.semana} del cuadernillo.</span></div>
+        ${(() => { if (misGrupos(m, lc.grado).some(gr => idx.has(`${lc.id}_${lc.grado}${gr}`) || avance(lc, lc.grado, gr).hechos)) return '';
+          const sig = LECTURAS.filter(l => (m.asignaturas || []).includes(l.asignatura) && (m.grados || []).includes(l.grado) && l.semana > Math.max(ultima, 1)).sort((a, b) => a.semana - b.semana)[0];
+          return `<p class="aviso-noap">⏳ Esta lectura todavía no se aplica en Integración Curricular, así que aún no hay hojas que calificar.${sig ? ` Tu siguiente lectura es <b>${esc(sig.titulo)}</b> (${sig.grado}.° grado, semana ${sig.semana}).` : ''} Si tienes hojas de otra lectura, elige <b>«Otra lectura (atrasada o de un compañero)»</b>.</p>`; })()}
         <div class="t-grupos">${misGrupos(m, lc.grado).map(gr => tarjetaGrupo(lc, lc.grado, gr, 'calificar')).join('')}</div>`
-      : `<div class="campo" style="margin-top:.8rem"><label for="o-lec">Lectura que vas a calificar</label><select id="o-lec" class="sel-grande">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1) + 1).map(l => `<option value="${l.id}">${esc(optLec(l))}</option>`).join('')}</optgroup>`).join('')}</select></div>
+      : `<div class="campo" style="margin-top:.8rem"><label for="o-lec">Lectura que vas a calificar</label><select id="o-lec" class="sel-grande">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1) + 1).map(l => `<option value="${l.id}">${esc(optLec(l, null, aplicadaEscuela(l, idx)))}</option>`).join('')}</optgroup>`).join('')}</select></div>
         <button type="button" class="btn linea" id="o-ir">Elegir grupo</button>`}
       <p class="resumen-mio" style="margin-top:1rem">${faltan ? `En total te faltan <b>${faltan}</b> grupos por calificar.` : '¡Vas al corriente! No tienes grupos pendientes.'}</p>
     </section>`;
@@ -370,7 +403,7 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
         <div class="ml-grupos">${est.map(({ gr, e }) => `<button type="button" class="chip-est ${e.clave}" data-accion="calificar" data-lec="${l.id}" data-g="${l.grado}" data-gr="${gr}">${CHIP[e.clave]} ${l.grado}.° ${gr} <span>${e.total ? `${e.hechos}/${e.total}` : ''}</span></button>`).join('')}</div></div>`).join('')}</div></details>`;
   } else if (!aplicaIC) {
     html += `<section class="tarjeta"><h2>¿Qué lectura vas a calificar?</h2><p class="vacio">Tus asignaturas aún no tienen lecturas asignadas en el calendario. Si cubres a un compañero, usa la opción de abajo.</p>
-      <div class="campo"><label for="o-lec">Lectura que vas a calificar</label><select id="o-lec" class="sel-grande">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1) + 1).map(l => `<option value="${l.id}">${esc(optLec(l))}</option>`).join('')}</optgroup>`).join('')}</select></div>
+      <div class="campo"><label for="o-lec">Lectura que vas a calificar</label><select id="o-lec" class="sel-grande">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1) + 1).map(l => `<option value="${l.id}">${esc(optLec(l, null, aplicadaEscuela(l, idx)))}</option>`).join('')}</optgroup>`).join('')}</select></div>
       <button type="button" class="btn linea" id="o-ir">Elegir grupo</button></section>`;
   }
 
@@ -477,6 +510,7 @@ function pantallaCalificar() {
     ${faltaIC && !est ? '<p class="nota-falta">Integración Curricular lo registró como ausente.</p>' : ''}
     <div class="rub">${CRIT.map(c => `<div class="crit">
       <p class="crit-n">${esc(c.nombre)}</p>
+      ${guiaCritHTML(c, ui.grado)}
       <div class="niveles" role="radiogroup" aria-label="${esc(c.nombre)}">${[4, 3, 2, 1].map(n => `<button type="button" role="radio" aria-checked="${niv[c.id] === n}" class="nv n${n}" data-c="${c.id}" data-n="${n}"><b>${n}</b><span>${NIVEL_CORTO[n - 1]}</span></button>`).join('')}</div>
       ${niv[c.id] ? `<p class="desc">${esc(c.niveles[niv[c.id] - 1])}</p>` : ''}</div>`).join('')}</div>
     <div class="etiq" aria-label="Comentario rápido (opcional)"><span class="ayuda">Comentario rápido (opcional):</span>${ETIQUETAS.map(x => `<button type="button" class="etq-r ${x.b ? 'pos' : 'neg'}" data-etq="${esc(x.t)}" aria-pressed="${ui.borrador.etiquetas.includes(x.t)}">${esc(x.t)}</button>`).join('')}</div>
@@ -501,6 +535,7 @@ function pantallaCalificar() {
 
   $('#volver').addEventListener('click', volverInicio);
   vista.querySelectorAll('details.desp').forEach(d => d.addEventListener('toggle', () => { ui.abiertos[d.dataset.k] = d.open; }));
+  vista.querySelectorAll('details.guia-rub').forEach(d => d.addEventListener('toggle', () => guiaGuardar(d.dataset.guia, d.open)));
   vista.querySelectorAll('.punto').forEach(b => b.addEventListener('click', () => irA(+b.dataset.i)));
   $('#ant').addEventListener('click', () => irA(ui.idx - 1));
   $('#sig').addEventListener('click', () => irA(ui.idx + 1));
