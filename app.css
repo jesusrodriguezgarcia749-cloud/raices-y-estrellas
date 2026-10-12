@@ -321,3 +321,12 @@ button.chip-est{cursor:pointer;min-height:40px}
 .cuadricula th,.cuadricula td{padding:.3rem .1rem;font-size:.78rem}
 .cuadricula td.cel{font-size:.7rem;letter-spacing:-.02em}
 .cuadricula thead th:first-child,.cuadricula tbody th{width:2.4rem}
+
+/* ---------- Desplegables de lectura ---------- */
+.tarjeta.destacada{border:2px solid var(--oro);box-shadow:0 8px 24px -16px rgba(22,33,63,.5)}
+.sel-grande{width:100%;min-height:52px;padding:.6rem .8rem;border-radius:14px;border:2px solid var(--noche);background:#fff;font:700 1rem var(--sans);color:var(--tinta);margin:.4rem 0 .8rem}
+.hoja-dice{display:grid;gap:.15rem;padding:.8rem 1rem;margin:0 0 .9rem;border-radius:14px;background:#FFF6DF;border:1.5px dashed #D9B45A}
+.hoja-dice span{font-size:.88rem;color:var(--tinta2)}
+.hoja-dice b{font:800 1.35rem/1.2 var(--serif);color:var(--noche)}
+.cal-cab .hoja-dice{margin-top:.5rem}
+.hoja-dice span b{font:700 .88rem var(--sans);color:var(--tinta)}

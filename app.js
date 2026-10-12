@@ -253,7 +253,7 @@ function avance(lec, grado, grupo) {
 }
 
 /* ---------- Docente ---------- */
-const ui = { pantalla: 'inicio', lec: null, grado: null, grupo: null, idx: 0, abiertos: {} };
+const ui = { selApl: null, selCal: null, pantalla: 'inicio', lec: null, grado: null, grupo: null, idx: 0, abiertos: {} };
 
 function miMaestro() { return estado.maestros.find(m => m.nombre === estado.nombre); }
 
@@ -288,60 +288,89 @@ function tarjetaGrupo(lec, g, gr, accion) {
 }
 
 const misGrupos = (m, g) => (m?.grupos || []).length ? GRUPOS[g].filter(gr => m.grupos.includes(`${g}${gr}`)) : GRUPOS[g];
+// Avance por grado: la semana más alta que ya tiene captura o aplicación en algún grupo del grado.
+function frente(g, idx = indiceAplicadas()) { let f = 0; LECTURAS.forEach(l => { if (l.grado === g && GRUPOS[g].some(gr => idx.has(`${l.id}_${g}${gr}`))) f = Math.max(f, l.semana); }); return f; }
+// Resumen de una lectura en los grupos de un maestro.
+function resumenLec(m, l, idx, om) {
+  const es = misGrupos(m, l.grado).map(gr => estadoGrupo(l, l.grado, gr, idx, om)).filter(e => !['vacio'].includes(e.clave));
+  const tot = es.reduce((n, e) => n + e.total, 0), hechos = es.reduce((n, e) => n + e.hechos, 0);
+  const clave = om.has(l.id) ? 'omitida' : !es.length ? 'vacio' : es.every(e => e.clave === 'completo') ? 'completo' : hechos || es.some(e => e.clave === 'proceso') ? 'proceso' : 'pendiente';
+  return { clave, tot, hechos, aplicada: es.length && es.every(e => e.aplicoIC || e.hechos), algunaAplicada: es.some(e => e.aplicoIC || e.hechos) };
+}
+const TXT_RES = { completo: 'completa ✅', proceso: 'en proceso', pendiente: 'sin iniciar', omitida: 'omitida', vacio: 'sin alumnos' };
+const optLec = (l, r, extra = '') => `${l.grado}.° grado · ${l.titulo}  (sem. ${l.semana}${extra ? ', ' + extra : ''})`;
+
 function inicioDocente(m, califica, aplicaIC, ultima) {
-  const sem = SEMANAS[Math.max(ultima, 1) - 1];
-  const deEstaSemana = califica.filter(l => l.semana === sem.sem);
-  const om = omitidas();
-  const pendientes = califica.filter(l => l.semana < sem.sem && !om.has(l.id) && misGrupos(m, l.grado).some(gr => { const a = avance(l, l.grado, gr); return a.hechos < a.total; }));
+  const sem = SEMANAS[Math.max(ultima, 1) - 1], om = omitidas(), idx = indiceAplicadas();
   let html = `<div class="saludo"><h1>Hola, ${esc(estado.nombre)}</h1>
     <p class="ayuda">Semana ${sem.sem} de 30, del ${rangoSem(sem)}.</p></div>`;
 
+  /* ----- Integración Curricular: ¿qué lectura vas a aplicar? ----- */
   if (aplicaIC) {
-    const lecs = LECTURAS.filter(l => l.semana === sem.sem && (m.grados || []).includes(l.grado));
-    html += `<section class="tarjeta"><h2>Esta semana aplicas</h2><p class="ayuda">Imprime las hojas ya ordenadas por número de lista y, al terminar la sesión, marca quién faltó.</p>
-      ${lecs.map(l => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> ${esc(l.titulo)}</p>
-        <div class="grupos-apl">${misGrupos(m, l.grado).map(gr => { const ap = estado.aplic?.[idAplic(l.id, l.grado, gr)];
-          return `<div class="apl"><div><b>${l.grado}.° ${gr}</b>${ap ? `<span class="ok">Aplicada, ${ap.faltas?.length || 0} faltas</span>` : '<span>Sin registrar</span>'}</div>
-          <div class="fila-btn"><button type="button" class="btn linea chico" data-hojas="${l.id}" data-g="${l.grado}" data-gr="${gr}" aria-label="Imprimir hojas de ${l.grado}.° ${gr}">Hojas</button><button type="button" class="btn chico" data-faltas="${l.id}" data-g="${l.grado}" data-gr="${gr}" aria-label="Registrar faltas de ${l.grado}.° ${gr}">Faltas</button></div></div>`; }).join('')}</div></div>`).join('') || '<p class="vacio">No tienes grados asignados.</p>'}
+    const grados = (m.grados || []).slice().sort();
+    const lecsA = LECTURAS.filter(l => grados.includes(l.grado) && !om.has(l.id) && l.semana <= Math.max(sem.sem, ...grados.map(g => frente(g, idx) + 1))).sort((a, b) => a.grado - b.grado || a.semana - b.semana);
+    const sugeridas = grados.map(g => { const f = frente(g, idx); return LECTURAS.find(l => l.grado === g && l.semana === (f ? Math.min(f + 1, 30) : sem.sem)); }).filter(Boolean);
+    if (!ui.selApl || !lecsA.some(l => l.id === ui.selApl)) ui.selApl = (sugeridas[0] || lecsA[0])?.id;
+    const la = lecturaPorId(ui.selApl);
+    html += `<section class="tarjeta destacada"><h2>¿Qué lectura vas a aplicar?</h2>
+      <p class="ayuda">Elige la lectura por su título. Están en orden; la marcada como <b>siguiente</b> es la que sigue según lo que ya se trabajó.</p>
+      <select id="sel-apl" class="sel-grande" aria-label="Lectura a aplicar">${grados.map(g => `<optgroup label="${NOM_GRADO[g]}">${lecsA.filter(l => l.grado === g).map(l => { const r = resumenLec(m, l, idx, om);
+        return `<option value="${l.id}" ${l.id === ui.selApl ? 'selected' : ''}>${esc(optLec(l, r, sugeridas.some(s => s.id === l.id) ? 'siguiente' : r.aplicada ? 'ya aplicada' : r.algunaAplicada ? 'aplicada en parte' : l.semana < (frente(g, idx) || sem.sem) ? 'por recuperar' : ''))}</option>`; }).join('')}</optgroup>`).join('')}</select>
+      ${la ? `<div class="hoja-dice"><span>Las hojas dirán:</span><b>${esc(la.titulo)}</b><span>${NOM_GRADO[la.grado]}, semana ${la.semana} del cuadernillo. La califica <b>${esc(la.asignatura)}</b>.</span></div>
+      <div class="grupos-apl">${misGrupos(m, la.grado).map(gr => { const e = estadoGrupo(la, la.grado, gr, idx, om);
+        return `<div class="apl"><div><b>${la.grado}.° ${gr}</b>${e.aplicoIC ? `<span class="ok">Aplicada, ${e.faltasIC} faltas</span>` : e.hechos ? `<span class="ok">Ya en calificación (${e.hechos}/${e.total})</span>` : '<span>Sin aplicar</span>'}</div>
+        <div class="fila-btn"><button type="button" class="btn linea chico" data-hojas="${la.id}" data-g="${la.grado}" data-gr="${gr}" aria-label="Imprimir hojas de ${la.grado}.° ${gr}">Hojas</button><button type="button" class="btn chico" data-faltas="${la.id}" data-g="${la.grado}" data-gr="${gr}" aria-label="Registrar faltas de ${la.grado}.° ${gr}">Faltas</button></div></div>`; }).join('')}</div>` : '<p class="vacio">No tienes grados asignados.</p>'}
     </section>`;
-    const idxA = indiceAplicadas(), rec = LECTURAS.filter(l => l.semana < sem.sem && l.semana <= semanaTranscurrida() && !om.has(l.id) && (m.grados || []).includes(l.grado))
-      .map(l => ({ l, grupos: misGrupos(m, l.grado).filter(gr => !idxA.has(`${l.id}_${l.grado}${gr}`) && alumnosDe(l, l.grado, gr).length) })).filter(x => x.grupos.length);
-    if (rec.length) html += `<details class="tarjeta desp-rec"><summary><h2>Lecturas por recuperar <span class="etiqueta baja">${rec.reduce((n, x) => n + x.grupos.length, 0)}</span></h2></summary>
-      <p class="ayuda">Semanas pasadas que estos grupos aún no trabajan. Se sugiere recuperar una por semana, además de la del calendario, en orden.</p>
-      ${rec.map(({ l, grupos }) => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> Semana ${l.semana}: ${esc(l.titulo)}</p><p class="ayuda">Califica ${esc(l.asignatura)}.</p>
-        <div class="grupos-apl">${grupos.map(gr => `<div class="apl"><div><b>${l.grado}.° ${gr}</b><span>Sin aplicar</span></div>
-          <div class="fila-btn"><button type="button" class="btn linea chico" data-hojas="${l.id}" data-g="${l.grado}" data-gr="${gr}">Hojas</button><button type="button" class="btn chico" data-faltas="${l.id}" data-g="${l.grado}" data-gr="${gr}">Faltas</button></div></div>`).join('')}</div></div>`).join('')}</details>`;
   }
 
-  html += `<section class="tarjeta"><h2>Esta semana te toca calificar</h2>
-    ${deEstaSemana.length ? deEstaSemana.map(l => `<div class="bloque-lec"><p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> ${esc(l.titulo)}</p>
-      <div class="t-grupos">${misGrupos(m, l.grado).map(gr => tarjetaGrupo(l, l.grado, gr, 'calificar')).join('')}</div></div>`).join('')
-      : `<p class="vacio">Esta semana la lectura la califican otras asignaturas.</p>`}
-  </section>`;
-
-  // Mis lecturas del ciclo: todo lo que le toca calificar, de la semana 1 a la actual.
-  const idxM = indiceAplicadas(), mias = califica.filter(l => l.semana <= sem.sem).sort((a, b) => b.semana - a.semana || a.grado - b.grado);
-  const filasM = mias.map(l => ({ l, est: misGrupos(m, l.grado).map(gr => ({ gr, e: estadoGrupo(l, l.grado, gr, idxM, om) })) }));
-  const faltan = filasM.reduce((n, f) => n + f.est.filter(x => x.e.clave === 'proceso' || x.e.clave === 'pendiente').length, 0);
-  if (mias.length) html += `<section class="tarjeta"><h2>Mis lecturas del ciclo</h2>
-    <p class="resumen-mio">${faltan ? `Te faltan <b>${faltan}</b> grupos por calificar.` : '¡Vas al corriente! No tienes grupos pendientes.'}</p>
-    <p class="ayuda">✅ completo · 🟡 en proceso · ⚪ sin iniciar. Las lecturas las aplica Integración Curricular y te entrega las hojas en orden de lista; toca un grupo para calificarlo. Las semanas anteriores que no se trabajaron siguen aquí para recuperarlas.</p>
-    <div class="mis-lec">${filasM.map(({ l, est }) => `<div class="ml ${est.every(x => ['completo', 'omitida', 'vacio'].includes(x.e.clave)) ? 'hecha' : ''}">
-      <p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> Semana ${l.semana}: ${esc(l.titulo)}${om.has(l.id) ? ' <span class="etiqueta">Omitida</span>' : ''}</p>
-      <div class="ml-grupos">${est.map(({ gr, e }) => `<button type="button" class="chip-est ${e.clave}" data-accion="calificar" data-lec="${l.id}" data-g="${l.grado}" data-gr="${gr}" ${e.clave === 'omitida' ? 'disabled' : ''}>${CHIP[e.clave]} ${l.grado}.° ${gr} <span>${e.total ? `${e.hechos}/${e.total}` : ''}</span></button>`).join('')}</div></div>`).join('')}</div></section>`;
+  /* ----- Maestro que califica: ¿qué lectura vas a calificar? ----- */
+  const mias = califica.filter(l => !om.has(l.id)).sort((a, b) => a.grado - b.grado || a.semana - b.semana);
+  if (mias.length) {
+    const res = Object.fromEntries(mias.map(l => [l.id, resumenLec(m, l, idx, om)]));
+    const sugerida = mias.filter(l => res[l.id].clave === 'proceso').sort((a, b) => a.semana - b.semana)[0]
+      || mias.filter(l => res[l.id].clave !== 'completo' && l.semana === frente(l.grado, idx)).sort((a, b) => a.grado - b.grado)[0]
+      || mias.filter(l => res[l.id].clave !== 'completo' && l.semana === frente(l.grado, idx) + 1)[0]
+      || mias.filter(l => res[l.id].clave !== 'completo').sort((a, b) => b.semana - a.semana)[0] || mias[mias.length - 1];
+    if (!ui.selCal || !(ui.selCal === '__otra' || mias.some(l => l.id === ui.selCal))) ui.selCal = sugerida.id;
+    const faltan = mias.reduce((n, l) => n + misGrupos(m, l.grado).filter(gr => ['proceso', 'pendiente'].includes(estadoGrupo(l, l.grado, gr, idx, om).clave)).length, 0);
+    const lc = ui.selCal === '__otra' ? null : lecturaPorId(ui.selCal);
+    html += `<section class="tarjeta destacada"><h2>¿Qué lectura vas a calificar?</h2>
+      <p class="ayuda">Elige la lectura con <b>el mismo título que traen las hojas</b>. Solo aparecen las de tu asignatura.</p>
+      <select id="sel-cal" class="sel-grande" aria-label="Lectura a calificar">
+        ${[1, 2, 3].filter(g => mias.some(l => l.grado === g)).map(g => `<optgroup label="${NOM_GRADO[g]}">${mias.filter(l => l.grado === g).map(l => { const r = res[l.id];
+          return `<option value="${l.id}" ${l.id === ui.selCal ? 'selected' : ''}>${esc(optLec(l, r, `${TXT_RES[r.clave]}${r.clave === 'proceso' ? ` ${r.hechos}/${r.tot}` : ''}`))}</option>`; }).join('')}</optgroup>`).join('')}
+        <option value="__otra" ${ui.selCal === '__otra' ? 'selected' : ''}>Otra lectura (cubrir a un compañero)…</option>
+      </select>
+      ${lc ? `<div class="hoja-dice"><span>Verifica que las hojas digan:</span><b>${esc(lc.titulo)}</b><span>${NOM_GRADO[lc.grado]}, semana ${lc.semana} del cuadernillo.</span></div>
+        <div class="t-grupos">${misGrupos(m, lc.grado).map(gr => tarjetaGrupo(lc, lc.grado, gr, 'calificar')).join('')}</div>`
+      : `<div class="campo" style="margin-top:.8rem"><label for="o-lec">Lectura que vas a calificar</label><select id="o-lec" class="sel-grande">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1) + 1).map(l => `<option value="${l.id}">${esc(optLec(l))}</option>`).join('')}</optgroup>`).join('')}</select></div>
+        <button type="button" class="btn linea" id="o-ir">Elegir grupo</button>`}
+      <p class="resumen-mio" style="margin-top:1rem">${faltan ? `En total te faltan <b>${faltan}</b> grupos por calificar.` : '¡Vas al corriente! No tienes grupos pendientes.'}</p>
+    </section>`;
+    // Resumen plegado de todo el ciclo.
+    const filasM = mias.slice().sort((a, b) => b.semana - a.semana || a.grado - b.grado).map(l => ({ l, est: misGrupos(m, l.grado).map(gr => ({ gr, e: estadoGrupo(l, l.grado, gr, idx, om) })) }));
+    html += `<details class="tarjeta desp-rec"><summary><h2>Mis lecturas del ciclo ${faltan ? `<span class="etiqueta baja">${faltan}</span>` : ''}</h2></summary>
+      <p class="ayuda">✅ completo · 🟡 en proceso · ⚪ sin iniciar. Toca un grupo para calificarlo.</p>
+      <div class="mis-lec">${filasM.map(({ l, est }) => `<div class="ml ${est.every(x => ['completo', 'omitida', 'vacio'].includes(x.e.clave)) ? 'hecha' : ''}">
+        <p class="lec-tit"><span class="etq g${l.grado}">${l.grado}.° grado</span> ${esc(l.titulo)} <span class="ayuda">(sem. ${l.semana})</span></p>
+        <div class="ml-grupos">${est.map(({ gr, e }) => `<button type="button" class="chip-est ${e.clave}" data-accion="calificar" data-lec="${l.id}" data-g="${l.grado}" data-gr="${gr}">${CHIP[e.clave]} ${l.grado}.° ${gr} <span>${e.total ? `${e.hechos}/${e.total}` : ''}</span></button>`).join('')}</div></div>`).join('')}</div></details>`;
+  } else if (!aplicaIC) {
+    html += `<section class="tarjeta"><h2>¿Qué lectura vas a calificar?</h2><p class="vacio">Tus asignaturas aún no tienen lecturas asignadas en el calendario. Si cubres a un compañero, usa la opción de abajo.</p>
+      <div class="campo"><label for="o-lec">Lectura que vas a calificar</label><select id="o-lec" class="sel-grande">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1) + 1).map(l => `<option value="${l.id}">${esc(optLec(l))}</option>`).join('')}</optgroup>`).join('')}</select></div>
+      <button type="button" class="btn linea" id="o-ir">Elegir grupo</button></section>`;
+  }
 
   html += `<button type="button" class="btn oro ancho-total" id="ir-tablero">Consultar alumnos, semáforo y reportes</button>
-  <section class="tarjeta"><h2>Calificar otra lectura</h2><p class="ayuda">Por ejemplo, si cubres a un compañero.</p>
-    <div class="otra"><select id="o-lec" aria-label="Lectura">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && l.semana <= Math.max(ultima, 1)).map(l => `<option value="${l.id}" ${l.semana === sem.sem && l.grado === ((m.grados || [1])[0]) ? 'selected' : ''}>Semana ${l.semana}: ${esc(l.titulo)}</option>`).join('')}</optgroup>`).join('')}</select>
-    <button type="button" class="btn linea" id="o-ir">Elegir grupo</button></div></section>
     <p style="text-align:center"><button type="button" class="btn-texto oscuro" id="cambiar-nombre">No soy ${esc(estado.nombre)}</button></p>`;
   vista.innerHTML = html;
 
+  $('#sel-apl')?.addEventListener('change', e => { ui.selApl = e.target.value; pantallaDocente(); });
+  $('#sel-cal')?.addEventListener('change', e => { ui.selCal = e.target.value; pantallaDocente(); });
   vista.querySelectorAll('[data-accion="calificar"]').forEach(b => b.addEventListener('click', () => abrirCalificar(b.dataset.lec, +b.dataset.g, b.dataset.gr)));
   vista.querySelectorAll('[data-hojas]').forEach(b => b.addEventListener('click', () => imprimirHojas(lecturaPorId(b.dataset.hojas), +b.dataset.g, b.dataset.gr)));
   vista.querySelectorAll('[data-faltas]').forEach(b => b.addEventListener('click', () => registrarFaltas(lecturaPorId(b.dataset.faltas), +b.dataset.g, b.dataset.gr)));
-  $('#o-ir').addEventListener('click', () => { const l = lecturaPorId($('#o-lec').value);
-    abrirModal('Elige el grupo', `<p>${esc(l.titulo)}</p><div class="t-grupos">${misGrupos(m, l.grado).map(gr => `<button type="button" class="t-grupo" data-gr="${gr}"><b>${l.grado}.° ${gr}</b></button>`).join('')}</div>`);
+  $('#o-ir')?.addEventListener('click', () => { const l = lecturaPorId($('#o-lec').value);
+    abrirModal('Elige el grupo', `<div class="hoja-dice"><span>Verifica que las hojas digan:</span><b>${esc(l.titulo)}</b></div><div class="t-grupos">${GRUPOS[l.grado].map(gr => `<button type="button" class="t-grupo" data-gr="${gr}"><b>${l.grado}.° ${gr}</b></button>`).join('')}</div>`);
     $('#modal-cuerpo').querySelectorAll('[data-gr]').forEach(b => b.addEventListener('click', () => { cerrarModal(); abrirCalificar(l.id, l.grado, b.dataset.gr); })); });
   $('#cambiar-nombre').addEventListener('click', () => { localStorage.removeItem('rye_docente'); estado.nombre = null; pantallaDocente(); });
   $('#ir-tablero').addEventListener('click', () => { ui.pantalla = 'tablero'; rep.vista = 'resumen'; pantallaDocente(); scrollTo(0, 0); });
@@ -400,7 +429,7 @@ function pantallaCalificar() {
   vista.innerHTML = `
   <div class="cal-cab">
     <button type="button" class="btn-texto oscuro" id="volver">‹ Mis lecturas</button>
-    <h1 class="cal-tit">${esc(lec.titulo)}</h1>
+    <div class="hoja-dice"><span>Verifica que las hojas digan:</span><b>${esc(lec.titulo)}</b><span>Si no coincide, vuelve y elige la lectura correcta en el desplegable.</span></div>
     <p class="ayuda">${ui.grado}.° ${ui.grupo}, ${TIPO1[lec.grado].toLowerCase()} de la semana ${lec.semana}. ${hechos} de ${total} calificados.</p>
     <div class="progreso"><i style="width:${total ? hechos / total * 100 : 0}%"></i></div>
   </div>
@@ -751,11 +780,11 @@ function tablero(cont, volver) {
   <div class="tarjeta"><h2>Grupos</h2><div class="g-cards">${LISTA_GRUPOS.map(x => { const st = statsConjunto(activos.filter(a => a.grado === x.grado && a.grupo === x.grupo), semanas);
     return `<button type="button" class="g-card g${x.grado}" data-g="${x.id}"><div class="g-top"><b>${x.grado}.° ${x.grupo}</b><span class="prom ${colorDe(st.prom)}">${r1(st.prom)}</span></div>${barraSemaforo(st.conteo)}
       <span class="ayuda">${st.est.length} alumnos. Aplicadas: ${txtAplic(st)}. Participación: ${pctPart(st)}</span>${st.debil ? `<span class="ayuda">Criterio más bajo: ${esc(CORTO[st.debil.id].toLowerCase())}</span>` : ''}</button>`; }).join('')}</div></div>
-  <div class="tarjeta"><h2>Captura de la semana ${semAct.sem}</h2><div class="captura-sem">${[1, 2, 3].map(g => { const l = LECTURAS.find(x => x.grado === g && x.semana === semAct.sem);
+  ${estado.rol === 'directivo' ? `<div class="tarjeta"><h2>Captura de la semana ${semAct.sem}</h2><div class="captura-sem">${[1, 2, 3].map(g => { const l = LECTURAS.find(x => x.grado === g && x.semana === semAct.sem);
     const resp = estado.maestros.filter(m => m.activo !== false && (m.asignaturas || []).includes(l.asignatura) && (m.grados || []).includes(g)).map(m => m.nombre);
     return `<div class="cs"><p class="lec-tit"><span class="etq g${g}">${g}.° grado</span> ${esc(l.titulo)}</p><p class="ayuda">Califica ${esc(l.asignatura)}${resp.length ? `: ${esc(resp.join(', '))}` : ' (sin maestro asignado)'}</p>
       <div class="cs-grupos">${GRUPOS[g].map(gr => { const al2 = alumnosDe(l, g, gr), h = al2.filter(a => { const c = estado.califs[idCalif(a.curp, l.id)]; return hecho(c); }).length;
-        return `<span class="cs-g ${al2.length && h === al2.length ? 'lista' : h ? 'parcial' : ''}">${g}.° ${gr}: ${h}/${al2.length}</span>`; }).join('')}</div></div>`; }).join('')}</div></div>
+        return `<span class="cs-g ${al2.length && h === al2.length ? 'lista' : h ? 'parcial' : ''}">${g}.° ${gr}: ${h}/${al2.length}</span>`; }).join('')}</div></div>`; }).join('')}</div></div>` : ''}
   <div class="tarjeta"><h2>Lecturas por recuperar</h2><p class="ayuda">Semanas ya transcurridas que algún grupo no ha trabajado. Desaparecen en cuanto se captura la lectura o se registran sus faltas.</p>${porRecuperarHTML(avanceAplicacion(LISTA_GRUPOS).pendientes)}</div>
   <div class="tarjeta"><h2>Alertas</h2>${al.length ? `<div class="alertas">${al.map(x => `<button type="button" data-curp="${x.a.curp}"><span class="etiqueta ${x.tipo === 'Dos rojos seguidos' ? 'baja' : 'cambio'}">${x.tipo}</span> ${esc(nombreCompleto(x.a))} <span class="ayuda">${x.a.grado}.° ${x.a.grupo}, ${x.det}</span></button>`).join('')}</div>` : '<p class="vacio">Sin alertas por ahora.</p>'}</div>
   <div class="tarjeta"><h2>Evolución del semáforo</h2>${svgEvolucion(evolucion(activos, semanas))}</div>`;
@@ -1468,6 +1497,13 @@ function formMaestro(m) {
 function tabDatos() {
   const pct = Math.round(estado.claves / LECTURAS.length * 100);
   $('#panel').innerHTML = `
+  <div class="tarjeta"><h2>Corregir lectura capturada</h2>
+    <p class="ayuda">Si en un grupo se calificó por error en otra lectura (por ejemplo, se capturó en «Chaac» pero las hojas eran de «Kukulkán»), mueve aquí todas sus calificaciones y faltas a la lectura correcta.</p>
+    <div class="campo"><label for="mv-grupo">Grupo</label><select id="mv-grupo">${LISTA_GRUPOS.map(x => `<option value="${x.id}">${x.grado}.° ${x.grupo}</option>`).join('')}</select></div>
+    <div class="campo"><label for="mv-de">Lectura donde quedó capturado</label><select id="mv-de"></select></div>
+    <div class="campo"><label for="mv-a">Lectura correcta</label><select id="mv-a"></select></div>
+    <button type="button" class="btn oro" id="mv-ok">Mover calificaciones</button>
+  </div>
   <div class="tarjeta"><h2>Lecturas omitidas</h2>
     <p class="ayuda">Si se decide no aplicar una lectura a un grado, márcala aquí: deja de contar como pendiente y no afecta las estadísticas. Queda registrada como omitida.</p>
     <div class="otra"><select id="om-lec" aria-label="Lectura a omitir">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g && !omitidas().has(l.id)).map(l => `<option value="${l.id}">Semana ${l.semana}: ${esc(l.titulo)}</option>`).join('')}</optgroup>`).join('')}</select>
@@ -1500,6 +1536,42 @@ function tabDatos() {
     <div class="campo"><label for="p-lec">Lectura</label><select id="p-lec">${[1, 2, 3].map(g => `<optgroup label="${NOM_GRADO[g]}">${LECTURAS.filter(l => l.grado === g).map(l => `<option value="${l.id}">Semana ${l.semana}: ${esc(l.titulo)}</option>`).join('')}</optgroup>`).join('')}</select></div>
     <button type="button" class="btn peligro" id="b-borrar-prueba">Borrar calificaciones de esta lectura</button>
   </div>`;
+  const llenarMover = () => {
+    const gid = $('#mv-grupo').value, g = +gid[0], gr = gid.slice(1);
+    const lecs = LECTURAS.filter(l => l.grado === g);
+    const cuenta = l => Object.values(estado.califs).filter(c => hecho(c) && c.lectura === l.id && c.grupo === gr && +c.grado === g).length;
+    const conDatos = lecs.filter(l => cuenta(l) || estado.aplic?.[idAplic(l.id, g, gr)]);
+    $('#mv-de').innerHTML = conDatos.length ? conDatos.map(l => `<option value="${l.id}">Sem. ${l.semana}: ${esc(l.titulo)} (${cuenta(l)} capturas)</option>`).join('') : '<option value="">Este grupo no tiene capturas</option>';
+    $('#mv-a').innerHTML = lecs.map(l => `<option value="${l.id}">Sem. ${l.semana}: ${esc(l.titulo)}</option>`).join('');
+  };
+  $('#mv-grupo').addEventListener('change', llenarMover); llenarMover();
+  $('#mv-ok').addEventListener('click', async e => {
+    const gid = $('#mv-grupo').value, g = +gid[0], gr = gid.slice(1), de = lecturaPorId($('#mv-de').value), a = lecturaPorId($('#mv-a').value);
+    if (!de) { aviso('Este grupo no tiene capturas que mover.', true); return; }
+    if (de.id === a.id) { aviso('Elige una lectura correcta distinta.', true); return; }
+    const origen = Object.entries(mem.calificaciones.docs).filter(([, c]) => c.lectura === de.id && c.grupo === gr && +c.grado === g && hecho(c));
+    const choques = origen.filter(([, c]) => hecho(estado.califs[idCalif(c.curp, a.id)]));
+    if (!confirm(`Se moverán ${origen.length} capturas de ${g}.° ${gr} de «${de.titulo}» a «${a.titulo}».${choques.length ? ` ${choques.length} alumnos ya tienen captura en «${a.titulo}» y se conservará la que ya está.` : ''} ¿Continuar?`)) return;
+    e.target.disabled = true; e.target.textContent = 'Moviendo…';
+    try {
+      const ops = [];
+      origen.forEach(([id, c]) => {
+        if (!choques.some(([cid]) => cid === id)) { const nuevo = { ...c, lectura: a.id, fecha: serverTimestamp(), movidoDe: de.id }; ops.push(['set', idCalif(c.curp, a.id), nuevo]); mem.calificaciones.docs[idCalif(c.curp, a.id)] = { ...nuevo, fecha: null }; }
+        ops.push(['del', id]); delete mem.calificaciones.docs[id];
+      });
+      const apId = idAplic(de.id, g, gr), ap = estado.aplic?.[apId];
+      for (let i = 0; i < ops.length; i += 400) {
+        const lote = writeBatch(db);
+        ops.slice(i, i + 400).forEach(([t, id, d]) => t === 'set' ? lote.set(doc(db, 'calificaciones', id), d) : lote.delete(doc(db, 'calificaciones', id)));
+        if (i === 0 && ap) { lote.set(doc(db, 'aplicaciones', idAplic(a.id, g, gr)), { ...ap, lectura: a.id, fecha: serverTimestamp() }); lote.delete(doc(db, 'aplicaciones', apId)); }
+        await lote.commit();
+      }
+      if (ap) { mem.aplicaciones.docs[idAplic(a.id, g, gr)] = { ...ap, lectura: a.id, fecha: null }; delete mem.aplicaciones.docs[apId]; }
+      SYNC[2].aplicar(mem.calificaciones.docs); SYNC[3].aplicar(mem.aplicaciones.docs); guardarLocal('calificaciones'); guardarLocal('aplicaciones');
+      avisarBorrado(); bitacora('lectura corregida', `${g}.° ${gr}: ${origen.length} capturas de ${de.id} a ${a.id}`);
+      aviso(`Listo: ${origen.length} capturas movidas a «${a.titulo}».`); refrescar();
+    } catch (x) { console.error(x); aviso('No se pudo completar. Revisa la conexión e inténtalo de nuevo.', true); e.target.disabled = false; e.target.textContent = 'Mover calificaciones'; }
+  });
   const guardarOmitidas = async lista => {
     try { await setDoc(doc(db, 'config', 'escuela'), { omitidas: lista }, { merge: true }); estado.config.omitidas = lista; refrescar(); }
     catch (x) { console.error(x); aviso('No se pudo guardar. Revisa la conexión.', true); }
