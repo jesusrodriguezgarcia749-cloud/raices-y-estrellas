@@ -380,3 +380,15 @@ button.chip-est{cursor:pointer;min-height:40px}
 .gn.n4{background:#2E8B67}.gn.n3{background:#C99A2E}.gn.n2{background:#3D6FB6}.gn.n1{background:#C0453A}
 .guia-tip{margin:.45rem 0 .1rem;color:var(--tinta2)}
 .aviso-noap{background:#FFF6DD;border:1px solid #EBCB7A;border-radius:10px;padding:.65rem .8rem;font-size:.9rem;margin:.7rem 0 0}
+
+/* Responsables */
+.yo{color:var(--jade,#2F6B4F)}
+.falta-resp{color:#B4372F;font-weight:700}
+.cal-g .entrega{background:#FFF7E3;border-radius:8px;padding:.4rem .55rem;font-size:.92rem;margin-top:.35rem}
+.resp-m summary{cursor:pointer;list-style:none}
+.resp-m summary::-webkit-details-marker{display:none}
+.resp-m summary h3{margin:0 0 .15rem;font-size:1.15rem}
+.resp-lecs{list-style:none;margin:.4rem 0 0;padding:0;display:grid;gap:.35rem}
+.resp-lecs li{padding:.4rem .55rem;border-radius:8px;background:#FBF6EA;font-size:.95rem}
+.resp-lecs li.hoy{background:#FFF0C7;font-weight:700}
+.resp-lecs li > span:first-child{display:inline-block;min-width:4.2em;font-weight:700}

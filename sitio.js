@@ -33,8 +33,32 @@
     }
   }
 
+  // Calendario de responsables
+  var cuerpoR=document.getElementById('resp-cuerpo');
+  if(cuerpoR && typeof SEMANAS!=='undefined'){
+    var GR={1:'1.er grado',2:'2.º grado',3:'3.er grado'}, TRI=['','Trimestre I','Trimestre II','Trimestre III'];
+    var pintarR=function(t){
+      var h='', ultimoT=0;
+      SEMANAS.forEach(function(s){
+        if(t!=='0' && String(s.trimestre)!==t) return;
+        if(t==='0' && s.trimestre!==ultimoT){ ultimoT=s.trimestre; h+='<tr class="trim"><td colspan="4">'+TRI[s.trimestre]+'</td></tr>'; }
+        var es=sem&&actual&&s.sem===sem.sem;
+        h+='<tr'+(es?' class="actual" id="resp-actual"':'')+'><th scope="row">Semana '+s.sem+'<span>'+rango(s)+'</span></th>';
+        [1,2,3].forEach(function(g){
+          var l=LECTURAS.filter(function(x){return x.grado===g&&x.semana===s.sem;})[0];
+          h+='<td data-g="'+GR[g]+'">'+(l?'<a href="lecturas/'+l.slug+'.html">'+esc(l.titulo)+'</a><span class="cal">Aplica: Integración Curricular · Califica: <b>'+esc(l.asignatura)+'</b></span>':'—')+'</td>';
+        });
+        h+='</tr>';
+      });
+      cuerpoR.innerHTML=h;
+    };
+    var botR=document.querySelectorAll('.resp-pest button');
+    botR.forEach(function(b){b.addEventListener('click',function(){botR.forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});pintarR(b.dataset.t);});});
+    pintarR('0');
+  }
+
   // Filtros
-  var botones=document.querySelectorAll('.pestanas button'), bandas=document.querySelectorAll('.banda'), input=document.getElementById('buscar'), sinRes=document.getElementById('sin-res');
+  var botones=document.querySelectorAll('.filtros .pestanas button'), bandas=document.querySelectorAll('.banda'), input=document.getElementById('buscar'), sinRes=document.getElementById('sin-res');
   var grado='0';
   function norm(t){return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
   function aplicar(){

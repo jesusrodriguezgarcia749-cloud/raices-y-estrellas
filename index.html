@@ -23,7 +23,7 @@
 <a class="saltar" href="#biblioteca">Ir a las lecturas</a>
 <header class="barra">
  <a class="marca" href="./">Raíces y Estrellas</a>
- <nav aria-label="Principal"><a href="#estrategia">La estrategia</a><a href="#biblioteca">Lecturas</a><a href="#evaluacion">Evaluación</a><a class="btn-acceso" href="app.html">Acceso docentes</a></nav>
+ <nav aria-label="Principal"><a href="#estrategia">La estrategia</a><a href="#biblioteca">Lecturas</a><a href="#evaluacion">Evaluación</a><a class="nav-resp" href="#responsables">Responsables</a><a class="btn-acceso" href="app.html">Acceso docentes</a></nav>
 </header>
 <main>
 <section class="hero" aria-labelledby="t-hero">
@@ -211,6 +211,25 @@
    <li class="azul"><b>Azul</b><span>6 a 6.9</span><em>En el umbral</em></li>
    <li class="rojo"><b>Rojo</b><span>5.9 o menos</span><em>Requiere atención</em></li>
   </ul>
+ </div>
+</section>
+<section id="responsables" class="responsables" aria-labelledby="t-resp">
+ <div class="ancho">
+  <h2 id="t-resp">¿Quién aplica y quién califica?</h2>
+  <p class="intro">Cada lectura pasa por dos manos distintas. Quien la aplica no es quien la califica: así cada grupo lee en la hora de Integración Curricular y la asignatura de la semana revisa con calma las respuestas.</p>
+  <ol class="roles">
+   <li class="rol-ic"><span class="rol-num">1</span><h3>Aplica: Integración Curricular</h3><p>En su hora y con su grupo: imprime las hojas desde la plataforma, guía la sesión de 20 a 25 minutos y registra las faltas.</p><p class="rol-entrega">Al terminar, <b>entrega las hojas en orden de lista</b> al maestro de la asignatura que califica esa semana.</p></li>
+   <li class="rol-cal"><span class="rol-num">2</span><h3>Califica: la asignatura de la semana</h3><p>Es la que indica el calendario de abajo. Recibe las hojas de cada uno de sus grupos y <b>solo califica</b>, con la Rúbrica General, en la plataforma, en la hoja impresa o en el Excel descargable.</p><p class="rol-entrega">No aplica la lectura: si le llegan hojas con otro título, avisa a la dirección.</p></li>
+   <li class="rol-dir"><span class="rol-num">3</span><h3>Coordina: la dirección</h3><p>Da de alta a cada maestro con sus asignaturas, grados y grupos, revisa el avance y resuelve los casos especiales: un maestro que cubre a otro, una lectura atrasada o un grupo sin calificar.</p></li>
+  </ol>
+  <h3 class="sem-tit">Calendario de responsables</h3>
+  <p class="intro">Para cada semana, la lectura de cada grado y la asignatura que la califica. Los nombres de los maestros de cada grupo se consultan dentro de la plataforma docente, en <b>Responsables</b>.</p>
+  <div class="pestanas resp-pest" role="group" aria-label="Filtrar por trimestre"><button type="button" data-t="0" aria-pressed="true">Todo el ciclo</button><button type="button" data-t="1" aria-pressed="false">Trimestre I</button><button type="button" data-t="2" aria-pressed="false">Trimestre II</button><button type="button" data-t="3" aria-pressed="false">Trimestre III</button></div>
+  <div class="tabla-envol"><table class="resp-tabla">
+   <caption class="sr">Lectura de cada grado y asignatura que la califica, por semana</caption>
+   <thead><tr><th scope="col">Semana</th><th scope="col">1.er grado</th><th scope="col">2.º grado</th><th scope="col">3.er grado</th></tr></thead>
+   <tbody id="resp-cuerpo"></tbody>
+  </table></div>
  </div>
 </section>
 </main>

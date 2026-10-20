@@ -320,6 +320,7 @@ function pantallaDocente() {
   if (aplicaIC) LECTURAS.filter(l => l.semana === Math.max(ultima, 1)).forEach(l => ids.add(l.id));
   if (ui.pantalla === 'calificar' && ui.lec) return pantallaCalificar();
   if (ui.pantalla === 'tablero') return tablero(vista, volverInicio);
+  if (ui.pantalla === 'responsables') return vistaResponsables(vista, volverInicio);
   inicioDocente(m, califica, aplicaIC, ultima);
 }
 
@@ -417,7 +418,8 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
       ${canT.filter(a => !alT.some(x => x.a.curp === a.curp)).length ? `<h3 style="margin-top:1rem">En seguimiento</h3><div class="alertas-lista">${canT.filter(a => !alT.some(x => x.a.curp === a.curp)).map(a => `<div class="alerta-fila"><div><b>${esc(nombreCompleto(a))}</b> <span class="etiqueta nuevo">Canalizado a ${esc(segDe(a.curp).destino)}</span></div><button type="button" class="btn linea chico" data-seg="${a.curp}">Seguimiento</button></div>`).join('')}</div>` : ''}
       <button type="button" class="btn linea chico" id="ver-tutoria" style="margin-top:.8rem">Ver el avance de mi grupo</button></section>`;
   }
-  html += `<button type="button" class="btn oro ancho-total" id="ir-tablero">Consultar alumnos, semáforo y reportes</button>
+  html += `<button type="button" class="btn linea ancho-total" id="ir-resp" style="margin-bottom:.7rem">👥 Responsables: quién aplica y quién califica</button>
+    <button type="button" class="btn oro ancho-total" id="ir-tablero">Consultar alumnos, semáforo y reportes</button>
     <p style="text-align:center"><button type="button" class="btn-texto oscuro" id="ayuda-doc">❓ ¿Cómo se usa?</button> · <button type="button" class="btn-texto oscuro" id="cambiar-nombre">No soy ${esc(estado.nombre)}</button></p>`;
   vista.innerHTML = html;
 
@@ -432,6 +434,7 @@ function inicioDocente(m, califica, aplicaIC, ultima) {
   $('#cambiar-nombre').addEventListener('click', () => { localStorage.removeItem('rye_docente'); estado.nombre = null; pantallaDocente(); });
   $('#ir-tablero').addEventListener('click', () => { ui.pantalla = 'tablero'; rep.vista = 'resumen'; pantallaDocente(); scrollTo(0, 0); });
   $('#ayuda-doc').addEventListener('click', ayudaDocente);
+  $('#ir-resp').addEventListener('click', () => { ui.pantalla = 'responsables'; pantallaDocente(); scrollTo(0, 0); });
   $('#guia-ses')?.addEventListener('click', () => guiaSesion(lecturaPorId(ui.selApl)));
   vista.querySelectorAll('[data-seg]').forEach(b => b.addEventListener('click', () => abrirSeguimiento(b.dataset.seg)));
   $('#ver-tutoria')?.addEventListener('click', () => { ui.pantalla = 'tablero'; rep.vista = 'grupo'; rep.grupo = m.tutorDe; pantallaDocente(); scrollTo(0, 0); });
@@ -1453,11 +1456,11 @@ function pdfConcentrado(d, grupos) {
 /* ---------- Panel directivo ---------- */
 function panelDirectivo() {
   const nRev = totalRevision();
-  const tabs = [['tablero', 'Tablero'], ['revision', `Revisión${nRev ? ` <span class="badge">${nRev}</span>` : ''}`], ['calendario', 'Calendario'], ['analisis', 'Análisis'], ['alumnos', 'Alumnos'], ['maestros', 'Maestros'], ['datos', 'Ajustes']];
+  const tabs = [['tablero', 'Tablero'], ['revision', `Revisión${nRev ? ` <span class="badge">${nRev}</span>` : ''}`], ['calendario', 'Calendario'], ['responsables', 'Responsables'], ['analisis', 'Análisis'], ['alumnos', 'Alumnos'], ['maestros', 'Maestros'], ['datos', 'Ajustes']];
   const foco = document.activeElement && document.activeElement.id === 'filtro-alumnos';
   vista.innerHTML = `<nav class="pestanas" role="tablist">${tabs.map(([id, t]) => `<button type="button" role="tab" data-t="${id}" aria-selected="${estado.pestana === id}">${t}</button>`).join('')}</nav><div id="panel"></div>`;
   vista.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => { estado.pestana = b.dataset.t; panelDirectivo(); }));
-  ({ tablero: () => tablero($('#panel')), revision: tabRevision, analisis: tabAnalisis, calendario: tabCalendario, alumnos: tabAlumnos, maestros: tabMaestros, datos: tabDatos })[estado.pestana]();
+  ({ tablero: () => tablero($('#panel')), revision: tabRevision, analisis: tabAnalisis, calendario: tabCalendario, responsables: () => vistaResponsables($('#panel')), alumnos: tabAlumnos, maestros: tabMaestros, datos: tabDatos })[estado.pestana]();
   if (foco) { const f = $('#filtro-alumnos'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
 }
 
@@ -1715,6 +1718,61 @@ async function leerLista(archivo) {
 /* Maestros */
 /* Calendario de aplicación y calificación */
 const cal = { modo: 'semana', sem: null };
+
+/* ---------- Responsables: quién aplica y quién califica ----------
+   Misma información para docentes y directivos. Sale de las asignaturas,
+   grados y grupos que la dirección registró para cada maestro. */
+const resp = { modo: 'semana', sem: null };
+function vistaResponsables(cont, volver) {
+  const actual = Math.max(semanaVigente().ultima, 1);
+  if (!resp.sem) resp.sem = actual;
+  const yo = estado.rol === 'maestro' ? estado.nombre : null;
+  const marca = lista => lista.length ? lista.map(n => n === yo ? `<b class="yo">${esc(n)} (tú)</b>` : esc(n)).join(', ') : '';
+  const IC = 'Integración Curricular';
+  let cuerpo = '';
+  if (resp.modo === 'semana') {
+    const s0 = SEMANAS[resp.sem - 1];
+    cuerpo = `<div class="cal-nav"><button type="button" class="btn linea chico" id="r-ant" ${resp.sem === 1 ? 'disabled' : ''} aria-label="Semana anterior">‹</button>
+      <div><b>Semana ${s0.sem} de 30</b><span>${rangoSem(s0)}${s0.sem === actual ? ' · semana actual' : ''}</span></div>
+      <button type="button" class="btn linea chico" id="r-sig" ${resp.sem === 30 ? 'disabled' : ''} aria-label="Semana siguiente">›</button></div>
+      ${resp.sem !== actual ? '<p style="text-align:center"><button type="button" class="btn-texto oscuro" id="r-hoy">Ir a la semana actual</button></p>' : ''}
+      ${[1, 2, 3].map(g => { const l = LECTURAS.find(x => x.grado === g && x.semana === resp.sem);
+        return `<div class="tarjeta cal-grado"><p class="lec-tit"><span class="etq g${g}">${g}.° grado</span> ${esc(l.titulo)}</p>
+          <p class="ayuda">Aplica: <b>Integración Curricular</b> · Califica: <b>${esc(l.asignatura)}</b></p>
+          <div class="cal-grupos">${GRUPOS[g].map(gr => { const ap = maestrosDe(IC, g, gr), ca = maestrosDe(l.asignatura, g, gr);
+            return `<div class="cal-g"><div class="cal-g-cab"><b>${g}.° ${gr}</b></div>
+              <p><span class="et">Aplica</span> ${marca(ap) || '<span class="falta-resp">Sin maestro de Integración Curricular registrado</span>'}</p>
+              <p><span class="et">Califica</span> ${marca(ca) || `<span class="falta-resp">Sin maestro de ${esc(l.asignatura)} registrado</span>`}</p>
+              ${ca.length ? `<p class="entrega">📄 Las hojas se entregan, en orden de lista, a ${marca(ca)}.</p>` : ''}</div>`; }).join('')}</div></div>`; }).join('')}`;
+  } else {
+    const activos = estado.maestros.filter(m => m.activo !== false).sort((a, b) => (b.nombre === yo) - (a.nombre === yo) || a.nombre.localeCompare(b.nombre, 'es'));
+    cuerpo = activos.map(m => {
+      const aplica = (m.asignaturas || []).includes(IC) ? (m.grados || []).slice().sort().flatMap(g => misGrupos(m, g).map(gr => `${g}.° ${gr}`)) : [];
+      const lecs = LECTURAS.filter(l => (m.asignaturas || []).includes(l.asignatura) && (m.grados || []).includes(l.grado)).sort((a, b) => a.semana - b.semana || a.grado - b.grado);
+      return `<details class="tarjeta resp-m" ${m.nombre === yo ? 'open' : ''}><summary><h3>${esc(m.nombre)}${m.nombre === yo ? ' <span class="etiqueta nuevo">Tú</span>' : ''}</h3><span class="ayuda">${esc((m.asignaturas || []).join(', ') || 'Sin asignaturas')}</span></summary>
+        ${aplica.length ? `<p><span class="et">Aplica</span> todas las lecturas en ${esc(aplica.join(', '))}, en su hora de Integración Curricular.</p>` : ''}
+        ${lecs.length ? `<p><span class="et">Califica</span> ${lecs.length} lecturas del ciclo:</p><ul class="resp-lecs">${lecs.map(l => `<li class="${l.semana === actual ? 'hoy' : ''}"><span>Sem. ${l.semana}</span> <span class="etq g${l.grado}">${l.grado}.°</span> ${esc(l.titulo)} <span class="ayuda">${esc(misGrupos(m, l.grado).map(gr => l.grado + '.° ' + gr).join(', '))}</span></li>`).join('')}</ul>`
+          : aplica.length ? '' : '<p class="vacio">Sus asignaturas no tienen lecturas que calificar en sus grados.</p>'}
+      </details>`; }).join('') || '<p class="vacio">Todavía no hay maestros registrados.</p>';
+  }
+  // Huecos: lecturas de un grupo que nadie tiene registrada para calificar.
+  const huecos = {};
+  LECTURAS.forEach(l => GRUPOS[l.grado].forEach(gr => { if (!maestrosDe(l.asignatura, l.grado, gr).length) { const k = `${l.asignatura}|${l.grado}${gr}`; (huecos[k] ||= { asig: l.asignatura, g: l.grado, gr, sems: [] }).sems.push(l.semana); } }));
+  const listaH = Object.values(huecos).sort((a, b) => a.asig.localeCompare(b.asig, 'es') || a.g - b.g || a.gr.localeCompare(b.gr));
+  cont.innerHTML = `${volver ? '<button type="button" class="btn-texto oscuro" id="r-volver">← Volver al inicio</button>' : ''}
+    <div class="tarjeta"><h2>Responsables</h2>
+    <p class="ayuda"><b>Integración Curricular aplica</b> la lectura en su hora, registra las faltas y entrega las hojas en orden de lista. <b>La asignatura de la semana califica</b> esas hojas. Si un maestro cubre a otro, califica con la opción «Otra lectura» y la dirección lo marca como correcto.</p>
+    <div class="pestanas mini" role="tablist"><button type="button" role="tab" data-rm="semana" aria-selected="${resp.modo === 'semana'}">Por semana</button><button type="button" role="tab" data-rm="maestro" aria-selected="${resp.modo === 'maestro'}">Por maestro</button></div></div>
+    ${cuerpo}
+    ${listaH.length ? `<details class="tarjeta"><summary><h2>Lecturas sin maestro registrado <span class="etiqueta baja">${listaH.length}</span></h2></summary>
+      <p class="ayuda">${estado.rol === 'directivo' ? 'Combinaciones de asignatura y grupo que nadie tiene registradas. Corrígelas en la pestaña Maestros (asignaturas, grados y grupos).' : 'Si te corresponde alguna de estas, avisa a la dirección para que te registre.'}</p>
+      <ul class="resp-lecs">${listaH.map(h => `<li><b>${esc(h.asig)}</b>, ${h.g}.° ${h.gr} <span class="ayuda">semanas ${h.sems.sort((a, b) => a - b).join(', ')}</span></li>`).join('')}</ul></details>` : ''}`;
+  cont.querySelector('#r-volver')?.addEventListener('click', volver);
+  cont.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { resp.modo = b.dataset.rm; vistaResponsables(cont, volver); }));
+  cont.querySelector('#r-ant')?.addEventListener('click', () => { resp.sem--; vistaResponsables(cont, volver); });
+  cont.querySelector('#r-sig')?.addEventListener('click', () => { resp.sem++; vistaResponsables(cont, volver); });
+  cont.querySelector('#r-hoy')?.addEventListener('click', () => { resp.sem = actual; vistaResponsables(cont, volver); });
+}
 function tabCalendario() {
   const actual = Math.max(semanaVigente().ultima, 1);
   if (!cal.sem) cal.sem = actual;

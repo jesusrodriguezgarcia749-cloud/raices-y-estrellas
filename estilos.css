@@ -34,7 +34,7 @@ p{margin:0 0 1em}
 .barra nav a{text-decoration:none;opacity:.9}
 .barra nav a:hover{opacity:1;text-decoration:underline;text-underline-offset:4px}
 .btn-acceso{border:1.5px solid var(--oro);color:var(--oro-suave);padding:.35rem .85rem;border-radius:999px}
-@media (max-width:720px){.barra nav a:not(.btn-acceso){display:none}}
+@media (max-width:720px){.barra nav a:not(.btn-acceso):not(.nav-resp){display:none}.barra nav{gap:.7rem;font-size:.92rem}.barra .marca{font-size:1.05rem}}
 
 /* Botones */
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:.7rem 1.4rem;border-radius:999px;font:700 1.02rem var(--sans);text-decoration:none;cursor:pointer;border:2px solid transparent}
@@ -185,6 +185,37 @@ p{margin:0 0 1em}
 .vecinos .sig{text-align:right}
 @media (max-width:560px){.vecinos{grid-template-columns:1fr}.vecinos .sig{text-align:left}}
 
+/* Responsables */
+.responsables{padding:clamp(3rem,7vw,5.5rem) 0;background:var(--pergamino)}
+.roles{list-style:none;margin:1.6rem 0 2.6rem;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.roles li{position:relative;background:#fff;border:1px solid #E8DCC5;border-top:8px solid var(--c);border-radius:var(--radio);padding:1.3rem 1.3rem 1.1rem}
+.roles .rol-ic{--c:var(--jade)}.roles .rol-cal{--c:var(--oro)}.roles .rol-dir{--c:var(--noche)}
+.roles h3{font-size:1.25rem;margin:.2rem 0 .5rem}
+.roles p{margin:0 0 .6rem;color:var(--tinta2)}
+.rol-num{display:inline-grid;place-items:center;width:2rem;height:2rem;border-radius:50%;background:var(--c);color:#fff;font:800 1.05rem var(--serif)}
+.rol-cal .rol-num{color:var(--noche)}
+.rol-entrega{background:var(--papel);border-radius:10px;padding:.55rem .7rem;color:var(--tinta)!important}
+@media (max-width:820px){.roles{grid-template-columns:1fr}}
+.resp-pest{margin:.4rem 0 0}
+.resp-tabla{border-collapse:collapse;width:100%;min-width:760px;font-size:.95rem}
+.resp-tabla th,.resp-tabla td{padding:.7rem .85rem;text-align:left;vertical-align:top;border-bottom:1px solid #EEE3CE}
+.resp-tabla thead th{background:var(--noche);color:#fff;font-family:var(--serif);font-size:1.02rem}
+.resp-tabla tbody th{white-space:nowrap;background:#FBF6EA;font-weight:700}
+.resp-tabla tbody th span{display:block;font-weight:400;font-size:.85rem;color:var(--tinta2)}
+.resp-tabla td a{font-weight:700;text-decoration:none}.resp-tabla td a:hover{text-decoration:underline}
+.resp-tabla .cal{display:block;margin-top:.2rem;font-size:.9rem;color:var(--tinta2)}
+.resp-tabla .cal b{color:var(--tinta)}
+.resp-tabla tr.actual th,.resp-tabla tr.actual td{background:#FFF4D6}
+.resp-tabla tr.actual th::after{content:"Esta semana";display:block;margin-top:.25rem;font-size:.75rem;font-weight:700;color:var(--corteza)}
+.resp-tabla tr.trim td{background:var(--noche2);color:#fff;font:700 .95rem var(--serif);padding:.45rem .85rem}
+@media (max-width:760px){
+ .resp-tabla{min-width:0}
+ .resp-tabla thead{display:none}
+ .resp-tabla tr{display:block;background:#fff;border:1px solid #E2D4B8;border-radius:var(--radio);margin-bottom:.8rem;overflow:hidden}
+ .resp-tabla tr.trim{border:0;background:none;margin:1.2rem 0 .4rem}.resp-tabla tr.trim td{border-radius:10px}
+ .resp-tabla tbody th,.resp-tabla td{display:block}
+ .resp-tabla td::before{content:attr(data-g);display:block;font-size:.78rem;font-weight:700;color:var(--corteza);text-transform:uppercase;letter-spacing:.03em}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}
 
 /* Impresión: hoja de trabajo del alumno */
