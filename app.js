@@ -1,4 +1,4 @@
-/* Raíces y Estrellas · Plataforma docente · Entrega 3: acceso, panel directivo, calificación, tablero y reportes PDF */
+/* Raíces y Estrellas · Plataforma docente · Entrega 3 (+ reporte de cumplimiento): acceso, panel directivo, calificación, tablero y reportes PDF */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, serverTimestamp, addDoc, query, where, Timestamp, increment, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -1328,17 +1328,63 @@ function tabRevision() {
 }
 
 /* ---------- Análisis: cumplimiento por maestro y lecturas ---------- */
-function datosCumplimiento() {
-  const idx = indiceAplicadas(), om = omitidas(), tope = semanaTranscurrida();
+// Primera semana con alguna captura o aplicación en la escuela (las anteriores no se aplicaron).
+function primeraSemanaConDatos(idx = indiceAplicadas()) {
+  let m = Infinity; LECTURAS.forEach(l => { if (GRUPOS[l.grado].some(gr => idx.has(`${l.id}_${l.grado}${gr}`))) m = Math.min(m, l.semana); });
+  return m === Infinity ? 1 : m;
+}
+const cum = { desde: null, filtro: 'todos' };
+// Desde qué semana se cuenta: la que eligió la dirección o, si no eligió, la primera semana con datos.
+function cumDesde(idx) {
+  const tope = Math.max(semanaTranscurrida(), 1);
+  let v = cum.desde; if (v == null) { try { v = +localStorage.getItem('rye_cum_desde') || null; } catch (e) { v = null; } }
+  if (v == null) v = primeraSemanaConDatos(idx);
+  return Math.min(Math.max(1, v), tope);
+}
+const ESTATUS = {
+  nocumplio: { t: 'No ha calificado', color: 'rojo', chip: 'pendiente', ic: '🔴' },
+  parcial: { t: 'Cumplimiento parcial', color: 'amarillo', chip: 'proceso', ic: '🟡' },
+  cumplio: { t: 'Cumplió', color: 'verde', chip: 'completo', ic: '✅' },
+  alcorriente: { t: 'Sin lecturas vencidas', color: 'gris', chip: 'futura', ic: '·' }
+};
+const TXT_EST = { completo: 'Completa', proceso: 'En proceso', pendiente: 'Sin iniciar' };
+// Última vez que cada maestro subió algo a la nube (calificación, falta o aplicación).
+function ultimasCapturas() {
+  const u = {}, pon = (n, ms) => { if (n && ms) u[n] = Math.max(u[n] || 0, ms); };
+  Object.values(estado.califs || {}).forEach(c => { if (hecho(c)) pon(c.docente, msDe(c.fecha)); });
+  Object.values(estado.aplic || {}).forEach(a => pon(a.docente, msDe(a.fecha)));
+  return u;
+}
+const fechaHora = ms => ms ? new Date(ms).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Sin capturas';
+const haceDias = ms => { if (!ms) return ''; const d = Math.floor((Date.now() - ms) / DIA); return d <= 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} días`; };
+const gruposDe = m => (m.grados || []).slice().sort().flatMap(g => misGrupos(m, g).map(gr => `${g}.° ${gr}`)).join(', ');
+/* Cumplimiento: por cada maestro, las lecturas que le tocaba calificar desde la semana elegida.
+   La semana actual se muestra aparte (aún está en tiempo) y no cuenta como incumplimiento. */
+function datosCumplimiento(desde = cumDesde()) {
+  const idx = indiceAplicadas(), om = omitidas(), tope = semanaTranscurrida(), ult = ultimasCapturas();
   return estado.maestros.filter(m => m.activo !== false).map(m => {
-    let total = 0, completo = 0, proceso = 0, pendiente = 0; const dias = [];
-    LECTURAS.filter(l => (m.asignaturas || []).includes(l.asignatura) && (m.grados || []).includes(l.grado) && l.semana <= tope && !om.has(l.id)).forEach(l => misGrupos(m, l.grado).forEach(gr => {
-      const e = estadoGrupo(l, l.grado, gr, idx, om); if (e.clave === 'vacio') return; total++;
-      if (e.clave === 'completo') { completo++; const ult = Math.max(0, ...alumnosDe(l, l.grado, gr).map(a => msDe(califDe(a.curp, l.id)?.fecha))); if (ult) dias.push(Math.max(0, Math.round((ult - fISO(SEMANAS[l.semana - 1].fin).getTime()) / DIA))); }
-      else if (e.clave === 'proceso') proceso++; else pendiente++;
-    }));
-    return { m, total, completo, proceso, pendiente, dias: prom(dias), aTiempo: dias.filter(x => x <= 10).length };
-  }).filter(x => x.total).sort((a, b) => (a.completo / a.total) - (b.completo / b.total));
+    let total = 0, completo = 0, proceso = 0, pendiente = 0; const dias = [], detalle = [], enCurso = [];
+    LECTURAS.filter(l => (m.asignaturas || []).includes(l.asignatura) && (m.grados || []).includes(l.grado) && l.semana >= desde && l.semana <= tope && !om.has(l.id))
+      .sort((a, b) => a.semana - b.semana || a.grado - b.grado)
+      .forEach(l => misGrupos(m, l.grado).forEach(gr => {
+        const e = estadoGrupo(l, l.grado, gr, idx, om); if (e.clave === 'vacio') return;
+        const fila = { l, g: l.grado, gr, e };
+        if (l.semana === tope) { enCurso.push(fila); return; }
+        total++; detalle.push(fila);
+        if (e.clave === 'completo') { completo++; const u = Math.max(0, ...alumnosDe(l, l.grado, gr).map(a => msDe(califDe(a.curp, l.id)?.fecha))); if (u) dias.push(Math.max(0, Math.round((u - fISO(SEMANAS[l.semana - 1].fin).getTime()) / DIA))); }
+        else if (e.clave === 'proceso') proceso++; else pendiente++;
+      }));
+    const estatus = !total ? 'alcorriente' : completo === total ? 'cumplio' : completo + proceso ? 'parcial' : 'nocumplio';
+    return { m, total, completo, proceso, pendiente, detalle, enCurso, estatus, ultima: ult[m.nombre] || 0, dias: prom(dias), aTiempo: dias.filter(x => x <= 10).length };
+  }).filter(x => x.total || x.enCurso.length)
+    .sort((a, b) => (a.total ? a.completo / a.total : 2) - (b.total ? b.completo / b.total : 2) || a.m.nombre.localeCompare(b.m.nombre, 'es'));
+}
+// Lecturas vencidas, sin completar, de grupos que no tienen maestro registrado para calificarlas.
+function sinResponsable(desde) {
+  const idx = indiceAplicadas(), om = omitidas(), tope = semanaTranscurrida();
+  return LECTURAS.filter(l => l.semana >= desde && l.semana < tope && !om.has(l.id)).sort((a, b) => a.semana - b.semana || a.grado - b.grado)
+    .flatMap(l => GRUPOS[l.grado].filter(gr => !maestrosDe(l.asignatura, l.grado, gr).length).map(gr => ({ l, g: l.grado, gr, e: estadoGrupo(l, l.grado, gr, idx, om) })))
+    .filter(x => !['vacio', 'completo'].includes(x.e.clave));
 }
 function datosLecturas(grado) {
   return LECTURAS.filter(l => !grado || l.grado === grado).map(l => {
@@ -1349,29 +1395,118 @@ function datosLecturas(grado) {
     return { l, n: cs.length, prom: prom(cs.map(c => c.calificacion)), debil, crit, grupos: new Set(cs.map(c => c.grado + c.grupo)).size };
   }).filter(Boolean).sort((a, b) => a.prom - b.prom);
 }
+function filaCumHTML(x, m) {
+  const otros = x.e.calificaron.filter(n => n !== m?.nombre);
+  return `<li><span>Sem. ${x.l.semana}</span> <span class="etq g${x.g}">${x.g}.° ${esc(x.gr)}</span> ${esc(x.l.titulo)}
+    <span class="chip-est ${x.e.clave}">${CHIP[x.e.clave]} ${TXT_EST[x.e.clave] || x.e.texto} <span>${x.e.hechos}/${x.e.total}</span></span>${otros.length ? ` <span class="ayuda">Capturó: ${esc(otros.join(', '))}</span>` : ''}</li>`;
+}
 const ana = { grado: 0 };
 function tabAnalisis() {
-  const cu = datosCumplimiento(), le = datosLecturas(ana.grado);
+  const idx = indiceAplicadas(), tope = Math.max(semanaTranscurrida(), 1), desde = cumDesde(idx);
+  const cu = datosCumplimiento(desde), le = datosLecturas(ana.grado), sr = sinResponsable(desde);
+  const cuenta = k => cu.filter(x => x.estatus === k).length;
+  const lista = cum.filtro === 'todos' ? cu : cu.filter(x => x.estatus === cum.filtro);
+  const filtros = [['todos', `Todos (${cu.length})`], ['nocumplio', `🔴 No han calificado (${cuenta('nocumplio')})`], ['parcial', `🟡 Parcial (${cuenta('parcial')})`], ['cumplio', `✅ Cumplieron (${cuenta('cumplio')})`]];
+  const tarjeta = x => { const st = ESTATUS[x.estatus], pend = x.detalle.filter(f => f.e.clave !== 'completo'), comp = x.detalle.filter(f => f.e.clave === 'completo');
+    return `<details class="tarjeta resp-m cum-m"><summary>
+      <div class="cum-cab"><h3>${esc(x.m.nombre)}</h3><span class="chip-est ${st.chip}">${st.ic} ${st.t}</span></div>
+      <span class="ayuda">${esc((x.m.asignaturas || []).join(', '))} · ${esc(gruposDe(x.m))}</span>
+      ${x.total ? `<div class="cum-av"><b>${x.completo} de ${x.total}</b> lecturas completas<div class="progreso"><i style="width:${x.completo / x.total * 100}%"></i></div></div>` : ''}
+      <span class="ayuda">Última captura en la nube: <b>${fechaHora(x.ultima)}</b>${x.ultima ? ` (${haceDias(x.ultima)})` : ''} · Toca para ver el detalle</span></summary>
+      ${pend.length ? `<p><span class="et">Le falta</span></p><ul class="resp-lecs">${pend.map(f => filaCumHTML(f, x.m)).join('')}</ul>` : x.total ? '<p class="vacio">No tiene lecturas vencidas pendientes. ✅</p>' : ''}
+      ${x.enCurso.length ? `<p><span class="et">Semana actual</span> <span class="ayuda">aún está en tiempo, no cuenta</span></p><ul class="resp-lecs">${x.enCurso.map(f => filaCumHTML(f, x.m)).join('')}</ul>` : ''}
+      ${comp.length ? `<details class="cum-hechas"><summary class="ayuda">Ver las ${comp.length} completas</summary><ul class="resp-lecs">${comp.map(f => filaCumHTML(f, x.m)).join('')}</ul></details>` : ''}
+    </details>`; };
   $('#panel').innerHTML = `
-  <div class="tarjeta"><div class="tab-cab"><h2>Cumplimiento por maestro</h2><button type="button" class="btn oro chico" id="pdf-ana">PDF del análisis</button></div>
-    <p class="ayuda">Solo visible para directivos. Cuenta las lecturas que ya transcurrieron por cada grupo que atiende el maestro. "Sin iniciar" puede deberse a que la lectura aún no se aplica. Días: promedio desde que terminó la semana de la lectura hasta su última captura.</p>
-    ${cu.length ? `<div class="tabla-envol"><table><thead><tr><th>Maestro</th><th>Completas</th><th class="ocultar-movil">En proceso</th><th>Sin iniciar</th><th>Días</th></tr></thead><tbody>${cu.map(x => `<tr><td>${esc(x.m.nombre)}<br><span class="ayuda">${esc((x.m.asignaturas || []).join(', '))}</span></td>
-      <td><b>${x.completo}</b> de ${x.total}<div class="progreso" style="margin-top:.3rem"><i style="width:${x.completo / x.total * 100}%"></i></div></td><td class="ocultar-movil">${x.proceso}</td><td>${x.pendiente}</td><td>${x.dias == null ? '—' : Math.round(x.dias)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="vacio">Aún no hay lecturas transcurridas con maestros asignados.</p>'}
+  <div class="tarjeta"><div class="tab-cab"><h2>Cumplimiento por maestro</h2><div class="fila-btn"><button type="button" class="btn oro chico" id="xls-cum">Descargar Excel</button><button type="button" class="btn linea chico" id="pdf-ana">PDF</button></div></div>
+    <p class="ayuda">Solo visible para directivos. Por cada maestro, las lecturas que le tocaba calificar en sus grupos. La semana actual (${tope}) no cuenta porque todavía está en tiempo.</p>
+    <div class="campo cum-desde"><label for="cum-desde">Contar desde la semana</label><select id="cum-desde">${Array.from({ length: tope }, (_, i) => i + 1).map(s => `<option value="${s}" ${s === desde ? 'selected' : ''}>Semana ${s} (${rangoSem(SEMANAS[s - 1])})</option>`).join('')}</select></div>
+    <p class="ayuda">⚠️ Solo aparece lo que ya llegó a la nube. Si un maestro calificó sin señal y no ha vuelto a abrir la plataforma con internet, aquí sale como pendiente; revisa su «última captura».</p>
+    <div class="pestanas mini" role="group">${filtros.map(([k, t]) => `<button type="button" data-cum-f="${k}" aria-pressed="${cum.filtro === k}" aria-selected="${cum.filtro === k}">${t}</button>`).join('')}</div>
   </div>
+  ${lista.length ? lista.map(tarjeta).join('') : `<div class="tarjeta"><p class="vacio">${cu.length ? 'Nadie en este filtro.' : 'Aún no hay lecturas transcurridas con maestros asignados.'}</p></div>`}
+  ${sr.length ? `<details class="tarjeta"><summary><h2>Pendientes sin maestro registrado <span class="etiqueta baja">${sr.length}</span></h2></summary>
+    <p class="ayuda">Nadie las tiene asignadas, así que no le cuentan a ningún maestro. Corrígelo en la pestaña Maestros.</p>
+    <ul class="resp-lecs">${sr.map(f => `${filaCumHTML(f).replace('</li>', ` <span class="ayuda">(${esc(f.l.asignatura)})</span></li>`)}`).join('')}</ul></details>` : ''}
   <div class="tarjeta"><h2>Análisis de las lecturas</h2>
     <p class="ayuda">Promedio que obtuvo cada lectura, de la más difícil a la más fácil, y el criterio que más falló. Si una lectura sale baja en todos los grupos, conviene revisar el texto o sus preguntas.</p>
     <div class="pestanas mini" role="group">${[0, 1, 2, 3].map(g => `<button type="button" data-ana-g="${g}" aria-pressed="${ana.grado === g}" aria-selected="${ana.grado === g}">${g ? NOM_GRADO[g] : 'Todas'}</button>`).join('')}</div>
     ${le.length ? `<div class="tabla-envol" style="margin-top:.6rem"><table><thead><tr><th>Lectura</th><th>Prom.</th><th>Criterio más bajo</th><th class="ocultar-movil">Alumnos</th></tr></thead><tbody>${le.map(x => `<tr><td>${esc(x.l.titulo)}<br><span class="ayuda">${x.l.grado}.° grado, sem. ${x.l.semana}</span></td><td><span class="prom ${colorDe(x.prom)}">${r1(x.prom)}</span></td><td>${x.debil ? `${esc(CORTO[x.debil.id])} <span class="ayuda">${x.crit[x.debil.id].toFixed(1)}</span>` : '—'}</td><td class="ocultar-movil">${x.n} en ${x.grupos} grupos</td></tr>`).join('')}</tbody></table></div>` : '<p class="vacio">Aún no hay lecturas calificadas.</p>'}
   </div>`;
   $('#panel').querySelectorAll('[data-ana-g]').forEach(b => b.addEventListener('click', () => { ana.grado = +b.dataset.anaG; tabAnalisis(); }));
-  $('#pdf-ana').addEventListener('click', e => generarPDF(e.target, pdfAnalisis));
+  $('#panel').querySelectorAll('[data-cum-f]').forEach(b => b.addEventListener('click', () => { cum.filtro = b.dataset.cumF; tabAnalisis(); }));
+  $('#cum-desde').addEventListener('change', e => { cum.desde = +e.target.value; try { localStorage.setItem('rye_cum_desde', String(cum.desde)); } catch (x) { } tabAnalisis(); });
+  $('#pdf-ana').addEventListener('click', e => generarPDF(e.target, d => pdfAnalisis(d, desde)));
+  $('#xls-cum').addEventListener('click', async e => {
+    const b = e.target, t = b.textContent; b.disabled = true; b.textContent = 'Generando…';
+    try { await cumplimientoExcel(desde); aviso('Excel descargado.'); } catch (x) { console.error(x); aviso('No se pudo generar el Excel.', true); }
+    b.disabled = false; b.textContent = t;
+  });
 }
-function pdfAnalisis(d) {
-  const cu = datosCumplimiento(), le = datosLecturas(0);
-  d.titulo('Análisis de la estrategia'); d.parrafo(`Corte al ${fechaLarga(new Date())}. Semanas transcurridas: ${semanaTranscurrida()}.`, 9, '#5B4E40');
+async function cumplimientoExcel(desde) {
+  if (typeof ExcelJS === 'undefined') throw new Error('Sin ExcelJS');
+  const cu = datosCumplimiento(desde), sr = sinResponsable(desde), tope = semanaTranscurrida();
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Raíces y Estrellas';
+  const FILL = { verde: 'FF2E8B57', amarillo: 'FFE0B321', rojo: 'FFC8403A', gris: 'FFBDB3A3' };
+  const SUAVE = { completo: 'FFDDF0E3', proceso: 'FFFFF1C9', pendiente: 'FFF8E1DF', curso: 'FFF1ECE2' };
+  const corte = `Corte: ${fechaLarga(new Date())}. Se cuentan las semanas ${desde} a ${Math.max(desde, tope - 1)}; la semana ${tope} está en curso y no cuenta como incumplimiento. Solo incluye lo que ya llegó a la nube.`;
+  const hoja = (nombre, titulo, cabs, anchos) => {
+    const ws = wb.addWorksheet(nombre, { views: [{ state: 'frozen', ySplit: 4 }] });
+    ws.getCell('A1').value = titulo; ws.getCell('A1').font = { bold: true, size: 13 };
+    ws.getCell('A2').value = corte; ws.getCell('A2').font = { italic: true, size: 9 };
+    ws.getRow(4).values = cabs; ws.getRow(4).height = 30;
+    ws.getRow(4).eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF16213F' } }; c.alignment = { wrapText: true, vertical: 'middle', horizontal: 'center' }; });
+    anchos.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+    ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: cabs.length } };
+    return ws;
+  };
+  const pinta = (c, argb, blanco) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }; if (blanco !== undefined) c.font = { bold: true, color: { argb: blanco ? 'FFFFFFFF' : 'FF2A2118' } }; };
+  // 1. Resumen por maestro
+  const ws1 = hoja('Resumen por maestro', 'Cumplimiento de calificación · Raíces y Estrellas · EST 17 vespertino',
+    ['Maestro', 'Asignaturas', 'Grupos', 'Lecturas por calificar', 'Completas', 'En proceso', 'Sin iniciar', '% cumplimiento', 'Estado', 'Última captura en la nube', 'Días promedio para completar'],
+    [34, 30, 26, 12, 11, 11, 11, 13, 22, 22, 14]);
+  cu.forEach((x, i) => {
+    const st = ESTATUS[x.estatus], r = ws1.getRow(5 + i);
+    r.values = [x.m.nombre, (x.m.asignaturas || []).join(', '), gruposDe(x.m), x.total, x.completo, x.proceso, x.pendiente, x.total ? x.completo / x.total : null, st.t, x.ultima ? `${fechaHora(x.ultima)} (${haceDias(x.ultima)})` : 'Sin capturas', x.dias == null ? null : Math.round(x.dias)];
+    r.getCell(8).numFmt = '0%'; [4, 5, 6, 7, 8, 11].forEach(k => { r.getCell(k).alignment = { horizontal: 'center' }; });
+    pinta(r.getCell(9), FILL[st.color], st.color !== 'amarillo' && st.color !== 'gris');
+    r.getCell(2).alignment = r.getCell(3).alignment = { wrapText: true, vertical: 'top' };
+  });
+  // 2. Detalle por lectura y grupo
+  const ws2 = hoja('Detalle', 'Detalle por maestro, lectura y grupo',
+    ['Maestro', 'Asignatura', 'Semana', 'Fechas', 'Grupo', 'Lectura', 'Calificados', 'Alumnos', 'Avance', 'Estado', 'Capturó otro maestro'],
+    [34, 22, 9, 22, 9, 40, 11, 10, 10, 18, 28]);
+  let r2 = 5;
+  cu.forEach(x => [...x.detalle.map(f => ({ ...f, curso: false })), ...x.enCurso.map(f => ({ ...f, curso: true }))].forEach(f => {
+    const otros = f.e.calificaron.filter(n => n !== x.m.nombre), r = ws2.getRow(r2++);
+    r.values = [x.m.nombre, f.l.asignatura, f.l.semana, rangoSem(SEMANAS[f.l.semana - 1]), `${f.g}.° ${f.gr}`, f.l.titulo, f.e.hechos, f.e.total, f.e.total ? f.e.hechos / f.e.total : null, f.curso ? 'Semana en curso' : TXT_EST[f.e.clave] || f.e.texto, otros.join(', ')];
+    r.getCell(9).numFmt = '0%'; [3, 5, 7, 8, 9].forEach(k => { r.getCell(k).alignment = { horizontal: 'center' }; });
+    pinta(r.getCell(10), f.curso ? SUAVE.curso : SUAVE[f.e.clave] || SUAVE.curso, false);
+  }));
+  // 3. Lecturas sin maestro registrado
+  if (sr.length) {
+    const ws3 = hoja('Sin maestro registrado', 'Lecturas vencidas, sin completar, que no tienen maestro registrado',
+      ['Asignatura que califica', 'Semana', 'Fechas', 'Grupo', 'Lectura', 'Calificados', 'Alumnos', 'Estado', 'Capturó'], [26, 9, 22, 9, 40, 11, 10, 16, 28]);
+    sr.forEach((f, i) => { const r = ws3.getRow(5 + i);
+      r.values = [f.l.asignatura, f.l.semana, rangoSem(SEMANAS[f.l.semana - 1]), `${f.g}.° ${f.gr}`, f.l.titulo, f.e.hechos, f.e.total, TXT_EST[f.e.clave] || f.e.texto, f.e.calificaron.join(', ')];
+      pinta(r.getCell(8), SUAVE[f.e.clave] || SUAVE.curso, false); });
+  }
+  const buf = await wb.xlsx.writeBuffer();
+  descargar(`cumplimiento-raices-y-estrellas-${hoyISO()}.xlsx`, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  bitacora('reporte de cumplimiento', `Excel, semanas ${desde} a ${Math.max(desde, tope - 1)}`);
+}
+function pdfAnalisis(d, desde = cumDesde()) {
+  const cu = datosCumplimiento(desde), le = datosLecturas(0), tope = semanaTranscurrida();
+  d.titulo('Análisis de la estrategia'); d.parrafo(`Corte al ${fechaLarga(new Date())}. Se cuentan las semanas ${desde} a ${Math.max(desde, tope - 1)}; la semana ${tope} está en curso y no cuenta.`, 9, '#5B4E40');
   d.subtitulo('Cumplimiento por maestro');
-  d.tabla([{ t: 'Maestro', w: 170 }, { t: 'Asignaturas', w: 150 }, { t: 'Completas', w: 60, der: true }, { t: 'En proceso', w: 52, der: true }, { t: 'Sin iniciar', w: 52, der: true }, { t: 'Días', w: 36, der: true }],
-    cu.map(x => [x.m.nombre, (x.m.asignaturas || []).join(', '), `${x.completo} de ${x.total}`, x.proceso, x.pendiente, x.dias == null ? '—' : Math.round(x.dias)]));
+  d.tabla([{ t: 'Maestro', w: 150 }, { t: 'Completas', w: 62, der: true }, { t: 'En proceso', w: 52, der: true }, { t: 'Sin iniciar', w: 52, der: true }, { t: 'Estado', w: 118 }, { t: 'Última captura', w: 86 }],
+    cu.map(x => { const st = ESTATUS[x.estatus]; return [x.m.nombre, x.total ? `${x.completo} de ${x.total}` : '—', x.proceso, x.pendiente, { t: st.t, color: st.color }, x.ultima ? fechaHora(x.ultima) : 'Sin capturas']; }));
+  const pend = cu.flatMap(x => x.detalle.filter(f => f.e.clave !== 'completo').map(f => ({ x, f })));
+  if (pend.length) {
+    d.subtitulo('Lo que falta por calificar');
+    d.tabla([{ t: 'Maestro', w: 130 }, { t: 'Sem.', w: 32, der: true }, { t: 'Grupo', w: 42 }, { t: 'Lectura', w: 196 }, { t: 'Avance', w: 48, der: true }, { t: 'Estado', w: 72 }],
+      pend.map(({ x, f }) => [x.m.nombre, f.l.semana, `${f.g}.° ${f.gr}`, f.l.titulo, `${f.e.hechos}/${f.e.total}`, { t: TXT_EST[f.e.clave], color: f.e.clave === 'proceso' ? 'amarillo' : 'rojo' }]));
+  }
   d.subtitulo('Lecturas de la más difícil a la más fácil');
   d.tabla([{ t: 'Grado', w: 40 }, { t: 'Sem.', w: 34 }, { t: 'Lectura', w: 220 }, { t: 'Promedio', w: 86 }, { t: 'Criterio más bajo', w: 100 }, { t: 'Alumnos', w: 40, der: true }],
     le.map(x => [`${x.l.grado}.°`, x.l.semana, x.l.titulo, { t: `${r1(x.prom)}  ${NOMBRE_COLOR[colorDe(x.prom)]}`, color: colorDe(x.prom) }, x.debil ? CORTO[x.debil.id] : '—', x.n]));

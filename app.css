@@ -392,3 +392,14 @@ button.chip-est{cursor:pointer;min-height:40px}
 .resp-lecs li{padding:.4rem .55rem;border-radius:8px;background:#FBF6EA;font-size:.95rem}
 .resp-lecs li.hoy{background:#FFF0C7;font-weight:700}
 .resp-lecs li > span:first-child{display:inline-block;min-width:4.2em;font-weight:700}
+
+/* Reporte de cumplimiento por maestro */
+.cum-cab{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap}
+.cum-cab h3{margin:0}
+.cum-m .chip-est{font-size:.82rem;padding:.2rem .6rem}
+.cum-av{margin:.5rem 0 .35rem;font-size:.95rem}
+.cum-av .progreso{margin-top:.3rem}
+.cum-desde{max-width:420px;margin:.6rem 0}
+.cum-hechas{margin-top:.6rem}
+.cum-hechas summary{cursor:pointer}
+.resp-lecs li .chip-est{margin-left:.3rem}
