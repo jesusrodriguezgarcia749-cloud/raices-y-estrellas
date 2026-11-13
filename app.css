@@ -403,3 +403,86 @@ button.chip-est{cursor:pointer;min-height:40px}
 .cum-hechas{margin-top:.6rem}
 .cum-hechas summary{cursor:pointer}
 .resp-lecs li .chip-est{margin-left:.3rem}
+
+/* ---------- Reporte general del alumno (hoja del maestro y pestaña de Dirección) ---------- */
+.rp-vista{max-width:760px}
+.rp-alumno{background:var(--noche);color:#fff;border-radius:18px;padding:1.1rem 1.25rem;margin-bottom:1rem}
+.rp-alumno h1{color:var(--oro-suave);font-size:clamp(1.5rem,6vw,2rem);margin:.1rem 0 .3rem}
+.rp-alumno p{margin:0;color:#D5DAEE}
+.rp-alumno .rp-limite{margin-top:.5rem;color:#fff}
+.rp-kicker{font-size:.8rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--oro);margin:0 0 .2rem}
+.tarjeta .rp-kicker{color:var(--corteza)}
+.rp-msj h1,.rp-msj h2{color:var(--noche)}
+.rp-materias{display:grid;gap:.5rem;margin-top:.6rem}
+.rp-mat{display:grid;text-align:left;gap:.1rem;padding:.8rem 1rem;border-radius:14px;border:1.5px solid var(--linea);background:#fff;cursor:pointer}
+.rp-mat span{font-size:.92rem;color:var(--tinta2)}
+.rp-mat em{font-style:normal;font-size:.85rem;font-weight:700;color:var(--jade)}
+.rp-mat.hecha{border-color:#B9DCC6;background:#F1F9F3}
+.rp-form h3{margin:1.4rem 0 .5rem;padding-top:.8rem;border-top:1px solid var(--linea);font-size:1.2rem}
+.rp-nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 .8rem}
+.rp-de{display:flex;align-items:center;gap:.4rem}.rp-de input{min-width:0}
+.rp-riesgo{align-items:flex-start;background:#FBEDEC;border:1.5px solid #EBC3C0;border-radius:12px;padding:.6rem .8rem;margin:.2rem 0 .4rem}
+.rp-riesgo small{color:var(--tinta2)}
+.rp-preg{border:0;padding:0;margin:0 0 .9rem}
+.rp-preg legend{font-weight:700;margin-bottom:.35rem;padding:0}
+.rp-preg.falta legend{color:var(--rojo)}
+.rp-ops{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem}
+.rp-op{min-height:46px;padding:.45rem .5rem;border-radius:12px;border:1.5px solid #CDBB98;background:#fff;cursor:pointer;font-size:.92rem;line-height:1.25}
+.rp-op.n0[aria-pressed="true"]{background:#DDF0E3;border-color:var(--verde);font-weight:700}
+.rp-op.n1[aria-pressed="true"]{background:#FFF1C9;border-color:var(--amarillo);font-weight:700}
+.rp-op.n2[aria-pressed="true"]{background:#F8E1DF;border-color:var(--rojo);font-weight:700}
+.rp-conductas{display:grid;gap:.35rem}
+.rp-conductas .check{padding:.35rem .2rem;border-bottom:1px solid #F0E7D5}
+.rp-ninguna{color:var(--jade)}
+.rp-ej{font-size:.86rem;color:var(--tinta2);background:#F6EEDC;border-radius:10px;padding:.4rem .7rem;margin:.1rem 0 0}
+@media (max-width:520px){.rp-ops{grid-template-columns:1fr}}
+/* Pestaña de Dirección */
+.rep-lista{display:grid;gap:.5rem}
+.rep-fila{display:flex;justify-content:space-between;align-items:center;gap:.8rem;flex-wrap:wrap;padding:.75rem 1rem;border:1.5px solid var(--linea);border-radius:14px;background:#fff}
+.rep-fila b{font-family:var(--serif);font-size:1.1rem}
+.rep-fila small{display:block;color:var(--tinta2)}
+.barra-av{height:10px;border-radius:99px;background:#EFE6D3;overflow:hidden;min-width:110px}
+.barra-av i{display:block;height:100%;background:var(--jade)}
+.rep-link{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;background:#F6EEDC;border-radius:12px;padding:.6rem .8rem;margin:.6rem 0;word-break:break-all;font-size:.9rem}
+.rep-mats{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.4rem;margin:.4rem 0}
+.rep-mat{padding:.45rem .7rem;border-radius:10px;border:1.5px solid var(--linea);font-size:.92rem}
+.rep-mat.ok{border-color:#B9DCC6;background:#F1F9F3}
+.rep-mat small{display:block;color:var(--tinta2)}
+.rep-res{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5rem;margin:.6rem 0}
+.rep-res div{background:#F6EEDC;border-radius:12px;padding:.6rem .8rem}
+.rep-res b{display:block;font-family:var(--serif);font-size:1.5rem;line-height:1.1}
+.rep-res .mal b{color:var(--rojo)}
+.sem{display:inline-block;width:.8em;height:.8em;border-radius:50%;vertical-align:-.05em}
+.sem.n0{background:var(--verde)}.sem.n1{background:var(--amarillo)}.sem.n2{background:var(--rojo)}.sem.nx{background:#CFC6B4}
+.rep-tabla td,.rep-tabla th{text-align:center;font-size:.9rem}
+.rep-tabla td:first-child,.rep-tabla th:first-child{text-align:left}
+.plant-fila{display:grid;grid-template-columns:1fr 1fr auto;gap:.4rem;margin-bottom:.35rem}
+.plant-fila input{min-height:40px;padding:.35rem .6rem;border-radius:10px;border:1.5px solid #CDBB98;background:var(--papel);min-width:0}
+@media (max-width:560px){.plant-fila{grid-template-columns:1fr auto}.plant-fila input:first-child{grid-column:1/-1}}
+/* Impresión del reporte (carta) */
+@media print{
+  .rg{font:9.5pt Arial,sans-serif;color:#000}
+  .rg-cab{display:grid;grid-template-columns:52pt 1fr;gap:10pt;align-items:center;border-bottom:1.5px solid #000;padding-bottom:6pt;margin-bottom:8pt}
+  .rg-cab img{width:52pt}
+  .rg-cab b{font-size:11.5pt}.rg-cab span{display:block;font-size:8.5pt}
+  .rg h1{font:700 15pt Georgia,serif;margin:2pt 0 6pt;text-align:center}
+  .rg h2{font:700 11pt Georgia,serif;margin:9pt 0 3pt;break-after:avoid}
+  .rg-datos{display:grid;grid-template-columns:2fr 1fr 1fr;border:1px solid #000;margin-bottom:6pt}
+  .rg-datos div{padding:3pt 5pt;border-right:1px solid #000;border-bottom:1px solid #000}
+  .rg-datos div:nth-child(3n){border-right:0}
+  .rg-datos small{display:block;font-size:7pt;text-transform:uppercase;color:#444}
+  .rg table{width:100%;border-collapse:collapse;margin-bottom:4pt}
+  .rg th,.rg td{border:1px solid #000;padding:2.5pt 3pt;text-align:center;vertical-align:top;font-size:8.5pt}
+  .rg th{background:#E8E8E8;font-size:8pt}
+  .rg td.izq{text-align:left}
+  .rg tr{break-inside:avoid}
+  .rg .riesgo{font-weight:700}
+  .rg-res{display:grid;grid-template-columns:repeat(4,1fr);gap:4pt;margin-bottom:4pt}
+  .rg-res div{border:1px solid #000;padding:3pt 5pt}
+  .rg-res b{display:block;font-size:13pt}
+  .rg-obs p{margin:0 0 3pt}
+  .rg-caja{border:1px solid #000;min-height:34pt;padding:3pt 5pt;margin-bottom:4pt;white-space:pre-wrap}
+  .rg-firmas{display:grid;grid-template-columns:repeat(4,1fr);gap:14pt;margin-top:26pt;text-align:center;font-size:8pt;break-inside:avoid}
+  .rg-firmas div{border-top:1px solid #000;padding-top:3pt}
+  .rg-ley{font-size:7.5pt;color:#333}
+}

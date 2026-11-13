@@ -129,7 +129,7 @@ let refrescar = () => {};
 
 /* ---------- Acceso ---------- */
 onAuthStateChanged(auth, usuario => {
-  if (!usuario) { estado.subs.forEach(f => f()); estado.subs = []; pantallaAcceso(); return; }
+  if (!usuario) { estado.subs.forEach(f => f()); estado.subs = []; soltarReporte(); repA.lista = null; repA.plantilla = null; pantallaAcceso(); return; }
   estado.rol = usuario.email === CUENTAS.directivo ? 'directivo' : usuario.email === CUENTAS.maestro ? 'maestro' : null;
   if (!estado.rol) { signOut(auth); return; }
   $('#cab-usuario').hidden = false;
@@ -1591,12 +1591,308 @@ function pdfConcentrado(d, grupos) {
 /* ---------- Panel directivo ---------- */
 function panelDirectivo() {
   const nRev = totalRevision();
-  const tabs = [['tablero', 'Tablero'], ['revision', `Revisión${nRev ? ` <span class="badge">${nRev}</span>` : ''}`], ['calendario', 'Calendario'], ['responsables', 'Responsables'], ['analisis', 'Análisis'], ['alumnos', 'Alumnos'], ['maestros', 'Maestros'], ['datos', 'Ajustes']];
+  const tabs = [['tablero', 'Tablero'], ['revision', `Revisión${nRev ? ` <span class="badge">${nRev}</span>` : ''}`], ['calendario', 'Calendario'], ['responsables', 'Responsables'], ['analisis', 'Análisis'], ['alumnos', 'Alumnos'], ['reportes', 'Reportes'], ['maestros', 'Maestros'], ['datos', 'Ajustes']];
   const foco = document.activeElement && document.activeElement.id === 'filtro-alumnos';
   vista.innerHTML = `<nav class="pestanas" role="tablist">${tabs.map(([id, t]) => `<button type="button" role="tab" data-t="${id}" aria-selected="${estado.pestana === id}">${t}</button>`).join('')}</nav><div id="panel"></div>`;
-  vista.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => { estado.pestana = b.dataset.t; panelDirectivo(); }));
-  ({ tablero: () => tablero($('#panel')), revision: tabRevision, analisis: tabAnalisis, calendario: tabCalendario, responsables: () => vistaResponsables($('#panel')), alumnos: tabAlumnos, maestros: tabMaestros, datos: tabDatos })[estado.pestana]();
+  vista.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => { if (estado.pestana === 'reportes' && b.dataset.t !== 'reportes') soltarReporte(); estado.pestana = b.dataset.t; panelDirectivo(); }));
+  ({ tablero: () => tablero($('#panel')), revision: tabRevision, analisis: tabAnalisis, calendario: tabCalendario, responsables: () => vistaResponsables($('#panel')), alumnos: tabAlumnos, reportes: tabReportes, maestros: tabMaestros, datos: tabDatos })[estado.pestana]();
   if (foco) { const f = $('#filtro-alumnos'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+}
+
+/* ---------- Reporte general del alumno (solo Dirección) ----------
+   La Dirección crea el reporte de un alumno y comparte un link (reporte.html?r=CLAVE) con los maestros.
+   Cada maestro llena su asignatura sin contraseña; aquí se ve el avance, el resumen y se imprime en carta.
+   Firebase: reportes/{clave} (lo que ve el maestro), reportes/{clave}/respuestas/{materia} y reportes/{clave}/privado/direccion. */
+const repA = { lista: null, abierto: null, R: null, resp: {}, dir: null, borrador: null, subs: [], plantilla: null };
+const urlReporte = t => new URL('reporte.html?r=' + t, location.href).href;
+function nuevoToken() { const c = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789', a = crypto.getRandomValues(new Uint8Array(24)); return [...a].map(x => c[x % c.length]).join(''); }
+const plantillaBase = () => Object.fromEntries(Object.entries(PLANTILLA_INICIAL).map(([g, l]) => [g, l.map(([materia, docente]) => ({ materia, docente }))]));
+async function cargarPlantilla() {
+  if (repA.plantilla) return repA.plantilla;
+  let p = null; try { const s = await getDoc(doc(db, 'config', 'plantilla')); if (s.exists()) p = s.data().grupos; } catch (e) { console.warn(e); }
+  repA.plantilla = p || plantillaBase(); return repA.plantilla;
+}
+async function cargarReportes() {
+  try { const s = await getDocs(collection(db, 'reportes')); repA.lista = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.creadoISO || '').localeCompare(a.creadoISO || '') || a.alumno.nombre.localeCompare(b.alumno.nombre, 'es')); }
+  catch (e) { console.error(e); repA.lista = []; aviso('No se pudieron leer los reportes. Revisa que las reglas de seguridad estén actualizadas (versión con reportes).', true); }
+}
+function soltarReporte() { repA.subs.forEach(f => f()); repA.subs = []; repA.abierto = null; repA.R = null; repA.resp = {}; repA.dir = null; repA.borrador = null; }
+const sumarDias = (iso, n) => { const d = fISO(iso); d.setDate(d.getDate() + n); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const fCorta = iso => iso ? fechaLarga(fISO(iso)) : '—';
+
+function tabReportes() {
+  if (repA.abierto) { detalleReporte(); return; }
+  const p = $('#panel');
+  if (!repA.lista) { p.innerHTML = '<div class="tarjeta"><p class="cargando">Cargando reportes…</p></div>'; cargarReportes().then(() => { if (estado.pestana === 'reportes' && !repA.abierto) tabReportes(); }); return; }
+  const L = repA.lista;
+  p.innerHTML = `
+  <div class="tarjeta">
+    <h2>Reporte general del alumno</h2>
+    <p class="ayuda">Para citar a la familia de un alumno: crea su reporte, comparte el link con los maestros por WhatsApp y cada quien llena su asignatura desde el celular (asistencia, uniforme, tareas, trabajo, conducta, calificación y observaciones). Aquí ves quién falta, el resumen y lo imprimes en carta para la cita.</p>
+    <div class="fila-btn"><button type="button" class="btn oro" id="rep-nuevo">Nuevo reporte</button><button type="button" class="btn linea" id="rep-plant">Maestros por grupo</button></div>
+  </div>
+  <div class="tarjeta">
+    <h2>Reportes</h2>
+    ${L.length ? `<div class="rep-lista">${L.map(r => { const n = Object.keys(r.enviados || {}).filter(k => r.materiaIds?.includes(k)).length, t = r.materias.length;
+      return `<div class="rep-fila"><div><b>${esc(r.alumno.nombre)}</b><small>${r.alumno.grado}.° ${esc(r.alumno.grupo)} · creado el ${fCorta(r.creadoISO)} · ${r.estado === 'abierto' ? 'abierto' : 'cerrado'}</small></div>
+        <div style="display:flex;align-items:center;gap:.7rem"><div><div class="barra-av"><i style="width:${t ? Math.round(n / t * 100) : 0}%"></i></div><small>${n} de ${t} maestros</small></div>
+        <button type="button" class="btn linea chico" data-rep="${r.id}">Abrir</button></div></div>`; }).join('')}</div>`
+      : '<p class="vacio">Todavía no hay reportes. Crea el primero con «Nuevo reporte».</p>'}
+  </div>`;
+  $('#rep-nuevo').addEventListener('click', formNuevoReporte);
+  $('#rep-plant').addEventListener('click', editarPlantilla);
+  p.querySelectorAll('[data-rep]').forEach(b => b.addEventListener('click', () => abrirReporte(b.dataset.rep)));
+}
+
+async function formNuevoReporte() {
+  const plant = await cargarPlantilla();
+  const hoy = hoyISO(), tri = (SEMANAS.filter(s => s.inicio <= hoy).pop() || SEMANAS[0]).trimestre;
+  const desde = (SEMANAS.find(s => s.trimestre === tri) || SEMANAS[0]).inicio;
+  let dia = hoy, habiles = 0; while (habiles < 2) { dia = sumarDias(dia, 1); const w = fISO(dia).getDay(); if (w > 0 && w < 6) habiles++; }
+  let sel = null;
+  abrirModal('Nuevo reporte de alumno', `
+    <div class="campo"><label for="nr-buscar">Alumno</label><input id="nr-buscar" type="search" placeholder="Escribe nombre o apellido" autocomplete="off"></div>
+    <div id="nr-res" class="lista-nombres"></div>
+    <div id="nr-sel" hidden></div>
+    <fieldset class="campo" style="border:0;padding:0"><legend style="font-weight:700">Motivo de la cita</legend>
+      ${MOTIVOS_REPORTE.map((m, i) => `<label class="check"><input type="checkbox" data-mot="${i}"> ${esc(m)}</label>`).join('')}</fieldset>
+    <div class="rp-nums">
+      <div class="campo"><label for="nr-desde">Periodo: desde</label><input id="nr-desde" type="date" value="${desde}"></div>
+      <div class="campo"><label for="nr-hasta">hasta</label><input id="nr-hasta" type="date" value="${hoy}"></div>
+      <div class="campo"><label for="nr-limite">Los maestros lo llenan antes del</label><input id="nr-limite" type="date" value="${dia}"></div>
+    </div>
+    <div id="nr-mats"></div>
+    <p id="nr-error" class="error" role="alert"></p>
+    <div class="fila-btn"><button type="button" class="btn oro" id="nr-crear">Crear reporte y obtener el link</button></div>`);
+  const activos = estado.alumnos.filter(a => a.estado === 'activo');
+  const pintarRes = () => {
+    const q = normal($('#nr-buscar').value);
+    const r = q.length < 2 ? [] : activos.filter(a => normal(nombreCompleto(a) + ' ' + a.nombres + ' ' + a.paterno).includes(q)).sort(ordenAlumno).slice(0, 8);
+    $('#nr-res').innerHTML = r.map(a => `<button type="button" data-curp="${a.curp}"><b>${esc(nombreCompleto(a))}</b><span>${a.grado}.° ${esc(a.grupo)}</span></button>`).join('') || (q.length >= 2 ? '<p class="ayuda">Ningún alumno activo coincide.</p>' : '');
+    $('#nr-res').querySelectorAll('[data-curp]').forEach(b => b.addEventListener('click', () => { sel = activos.find(a => a.curp === b.dataset.curp); elegido(); }));
+  };
+  const elegido = () => {
+    $('#nr-res').innerHTML = ''; $('#nr-buscar').value = '';
+    $('#nr-sel').hidden = false;
+    $('#nr-sel').innerHTML = `<div class="aviso-dir"><b>${esc(nombreCompleto(sel))}</b> · ${sel.grado}.° ${esc(sel.grupo)} <button type="button" class="btn-texto" id="nr-otro" style="color:var(--corteza)">cambiar</button></div>`;
+    $('#nr-otro').addEventListener('click', () => { sel = null; $('#nr-sel').hidden = true; $('#nr-mats').innerHTML = ''; $('#nr-buscar').focus(); });
+    const mats = plant[sel.grado + sel.grupo] || [];
+    const dosTec = mats.filter(m => /^tecnolog/i.test(m.materia)).length > 1;
+    $('#nr-mats').innerHTML = `<fieldset class="campo" style="border:0;padding:0"><legend style="font-weight:700">Asignaturas que van en el reporte</legend>
+      ${dosTec ? '<p class="ayuda">Este grupo tiene dos talleres de Tecnología: deja marcado solo el que lleva el alumno.</p>' : ''}
+      ${mats.map((m, i) => `<label class="check"><input type="checkbox" data-mat="${i}" checked> ${esc(m.materia)} <span class="ayuda">· ${esc(m.docente)}</span></label>`).join('')}</fieldset>`;
+  };
+  $('#nr-buscar').addEventListener('input', pintarRes);
+  $('#nr-crear').addEventListener('click', async e => {
+    const err = $('#nr-error');
+    if (!sel) { err.textContent = 'Elige al alumno.'; return; }
+    const mats = (plant[sel.grado + sel.grupo] || []).filter((m, i) => document.querySelector(`[data-mat="${i}"]`)?.checked);
+    if (!mats.length) { err.textContent = 'Marca al menos una asignatura.'; return; }
+    const d1 = $('#nr-desde').value, d2 = $('#nr-hasta').value;
+    if (!d1 || !d2 || d1 > d2) { err.textContent = 'Revisa el periodo: la fecha «desde» debe ser anterior a «hasta».'; return; }
+    e.target.disabled = true; e.target.textContent = 'Creando…';
+    const token = nuevoToken(), materias = mats.map((m, i) => ({ id: 'm' + i, materia: m.materia, docente: m.docente }));
+    const R = { token, curp: sel.curp, alumno: { nombre: nombreCompleto(sel), grado: sel.grado, grupo: sel.grupo, lista: sel.lista || null },
+      desde: d1, hasta: d2, limite: $('#nr-limite').value || null, materias, materiaIds: materias.map(m => m.id), estado: 'abierto', enviados: {}, creado: serverTimestamp(), creadoISO: hoyISO() };
+    const motivos = [...document.querySelectorAll('[data-mot]:checked')].map(x => MOTIVOS_REPORTE[+x.dataset.mot]);
+    try {
+      const lote = writeBatch(db);
+      lote.set(doc(db, 'reportes', token), R);
+      lote.set(doc(db, 'reportes', token, 'privado', 'direccion'), { motivos, antecedentes: '', acuerdos: '', compAlumno: '', compFamilia: '', cita: '', tutor: '' });
+      await lote.commit();
+      bitacora('reporte de alumno creado', `${R.alumno.nombre}, ${sel.grado}.° ${sel.grupo}`);
+      cerrarModal(); repA.lista = null; abrirReporte(token);
+    } catch (x) { console.error(x); e.target.disabled = false; e.target.textContent = 'Crear reporte y obtener el link'; err.textContent = 'No se pudo crear. Revisa la conexión y que las reglas de seguridad estén actualizadas (versión con reportes).'; }
+  });
+  $('#nr-buscar').focus();
+}
+
+function abrirReporte(id) {
+  soltarReporte(); repA.abierto = id;
+  repA.subs.push(onSnapshot(doc(db, 'reportes', id), s => { if (!s.exists()) { soltarReporte(); repA.lista = null; if (estado.pestana === 'reportes') tabReportes(); return; } repA.R = { id, ...s.data() }; if (estado.pestana === 'reportes' && repA.abierto === id) detalleReporte(); }, e => console.error(e)));
+  repA.subs.push(onSnapshot(collection(db, 'reportes', id, 'respuestas'), s => { repA.resp = Object.fromEntries(s.docs.map(d => [d.id, d.data()])); if (estado.pestana === 'reportes' && repA.abierto === id) detalleReporte(); }, e => console.error(e)));
+  getDoc(doc(db, 'reportes', id, 'privado', 'direccion')).then(s => { repA.dir = s.exists() ? s.data() : {}; if (estado.pestana === 'reportes' && repA.abierto === id) detalleReporte(); }).catch(e => { console.error(e); repA.dir = {}; });
+  detalleReporte(); scrollTo(0, 0);
+}
+
+// Resumen automático de las respuestas.
+function resumenReporte(R, resp) {
+  const filas = R.materias.map(m => ({ m, r: resp[m.id] || null }));
+  const hechas = filas.filter(f => f.r);
+  const riesgo = hechas.filter(f => f.r.riesgo || (f.r.calificacion != null && f.r.calificacion < MINIMA_REPORTE));
+  const sum = k => hechas.reduce((s, f) => s + (f.r[k] || 0), 0);
+  const conTareas = hechas.filter(f => f.r.tareasTot);
+  const cals = hechas.map(f => f.r.calificacion).filter(x => x != null);
+  const conductas = {}; hechas.forEach(f => (f.r.conducta || []).forEach(c => { (conductas[c] = conductas[c] || []).push(f.m.materia); }));
+  const ops = Object.fromEntries(OPCIONES_REPORTE.map(o => [o.id, { mal: hechas.filter(f => f.r[o.id] === 2).map(f => f.m.materia), regular: hechas.filter(f => f.r[o.id] === 1).map(f => f.m.materia) }]));
+  return { filas, hechas, riesgo, faltas: sum('faltas'), retardos: sum('retardos'), tareasEnt: conTareas.reduce((s, f) => s + (f.r.tareasEnt || 0), 0), tareasTot: conTareas.reduce((s, f) => s + f.r.tareasTot, 0),
+    promedio: prom(cals), conductas: Object.entries(conductas).sort((a, b) => b[1].length - a[1].length), ops };
+}
+function lecturaDeReporte(R) {
+  const a = estado.alumnos.find(x => x.curp === R.curp); if (!a) return null;
+  const s = statsAlumno(a, semanasDe({ tipo: 'rango', desde: R.desde, hasta: R.hasta }));
+  return s.cal.length ? s : null;
+}
+const semOp = v => `<span class="sem ${v == null ? 'nx' : 'n' + v}" title="${v == null ? 'Sin dato' : ['Bien', 'Regular', 'Atención'][v]}"></span>`;
+
+function detalleReporte() {
+  const p = $('#panel'), R = repA.R;
+  if (!R) { p.innerHTML = '<div class="tarjeta"><p class="cargando">Abriendo reporte…</p></div>'; return; }
+  const S = resumenReporte(R, repA.resp), url = urlReporte(R.id), abierto = R.estado === 'abierto';
+  const dir = repA.borrador || repA.dir || {};
+  const lec = lecturaDeReporte(R);
+  const msj = `Maestros: les pido llenar el reporte del alumno *${R.alumno.nombre}* (${R.alumno.grado}.° ${R.alumno.grupo})${R.limite ? ` a más tardar el ${fCorta(R.limite)}` : ''}. Cada quien elige su asignatura; toma unos dos minutos:\n${url}`;
+  const fila = (k, v, mal) => `<div class="${mal ? 'mal' : ''}"><b>${v}</b>${k}</div>`;
+  p.innerHTML = `
+  <div class="fila-btn" style="margin-bottom:.8rem"><button type="button" class="btn linea chico" id="rep-volver">← Todos los reportes</button></div>
+  <div class="rp-alumno"><p class="rp-kicker">Reporte general del alumno · ${abierto ? 'abierto' : 'cerrado'}</p><h1>${esc(R.alumno.nombre)}</h1>
+    <p>${R.alumno.grado}.° «${esc(R.alumno.grupo)}» · del ${fCorta(R.desde)} al ${fCorta(R.hasta)}${R.limite ? ` · los maestros lo llenan antes del ${fCorta(R.limite)}` : ''}</p></div>
+
+  <div class="tarjeta">
+    <h2>Link para los maestros</h2>
+    ${abierto ? `<p class="ayuda">Mándalo al grupo de WhatsApp de maestros. No pide contraseña: solo abre este reporte y deja de funcionar cuando lo cierres.</p>
+    <div class="rep-link"><span style="flex:1">${esc(url)}</span></div>
+    <div class="fila-btn"><button type="button" class="btn oro chico" id="rep-wa">Enviar por WhatsApp</button><button type="button" class="btn linea chico" id="rep-copiar">Copiar mensaje</button></div>`
+    : '<p class="ayuda">El reporte está cerrado: el link ya no funciona. Si un maestro aún debe llenarlo, vuelve a abrirlo.</p>'}
+    <h3 style="margin-top:1rem">Avance: ${S.hechas.length} de ${R.materias.length} asignaturas</h3>
+    <div class="rep-mats">${S.filas.map(f => `<div class="rep-mat${f.r ? ' ok' : ''}">${f.r ? '✓' : '⏳'} <b>${esc(f.m.materia)}</b><small>${esc(f.r?.docente || f.m.docente)}</small></div>`).join('')}</div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Resumen</h2>
+    ${S.hechas.length ? `<div class="rep-res">
+      ${fila('asignaturas en riesgo de reprobar', S.riesgo.length, S.riesgo.length)}
+      ${fila('promedio de lo reportado', r1(S.promedio), S.promedio != null && S.promedio < MINIMA_REPORTE)}
+      ${fila('faltas en total', S.faltas, S.faltas >= 5)}
+      ${fila('retardos en total', S.retardos, S.retardos >= 5)}
+      ${S.tareasTot ? fila('tareas entregadas', `${S.tareasEnt} / ${S.tareasTot}`, S.tareasEnt / S.tareasTot < .6) : ''}
+      ${lec ? fila('comprensión lectora (Raíces y Estrellas)', r1(lec.prom), lec.prom < 6) : ''}
+    </div>
+    ${S.riesgo.length ? `<p><b>En riesgo:</b> ${S.riesgo.map(f => esc(f.m.materia) + (f.r.calificacion != null ? ` (${f.r.calificacion})` : '')).join(', ')}.</p>` : ''}
+    ${S.conductas.length ? `<p><b>Conductas señaladas:</b></p><ul>${S.conductas.map(([c, ms]) => `<li>${esc(c)}: <b>${ms.length}</b> ${ms.length === 1 ? 'asignatura' : 'asignaturas'} <span class="ayuda">(${ms.map(esc).join(', ')})</span></li>`).join('')}</ul>` : '<p>Ningún maestro señaló problemas de conducta.</p>'}
+    <div class="tabla-envol"><table class="rep-tabla"><thead><tr><th>Asignatura</th><th>Faltas</th><th>Ret.</th><th>Tareas</th><th>Calif.</th>${OPCIONES_REPORTE.map(o => `<th title="${esc(o.nombre)}">${esc(o.corto)}</th>`).join('')}</tr></thead>
+      <tbody>${S.filas.map(({ m, r }) => r ? `<tr><td>${esc(m.materia)}</td><td>${r.faltas ?? '—'}</td><td>${r.retardos ?? '—'}</td><td>${r.tareasTot ? `${r.tareasEnt ?? 0}/${r.tareasTot}` : '—'}</td><td${r.riesgo || (r.calificacion != null && r.calificacion < MINIMA_REPORTE) ? ' style="color:var(--rojo);font-weight:700"' : ''}>${r.calificacion ?? '—'}${r.riesgo ? ' ⚠' : ''}</td>${OPCIONES_REPORTE.map(o => `<td>${semOp(r[o.id])}</td>`).join('')}</tr>`
+        : `<tr><td>${esc(m.materia)}</td><td colspan="${4 + OPCIONES_REPORTE.length}" class="ayuda">Pendiente</td></tr>`).join('')}</tbody></table></div>
+    <p class="ayuda"><span class="sem n0"></span> bien · <span class="sem n1"></span> regular · <span class="sem n2"></span> requiere atención. Pasa el dedo o el ratón sobre los encabezados para ver el rubro.</p>
+    <details><summary><b>Observaciones de los maestros</b></summary>
+      ${S.hechas.map(({ m, r }) => TEXTOS_REPORTE.some(t => r[t.id]) ? `<div style="margin:.7rem 0"><b>${esc(m.materia)}</b> <span class="ayuda">· ${esc(r.docente)}</span>${TEXTOS_REPORTE.filter(t => r[t.id]).map(t => `<p style="margin:.2rem 0"><i>${esc(t.nombre)}:</i> ${esc(r[t.id])}</p>`).join('')}</div>` : '').join('') || '<p class="ayuda">Sin observaciones escritas.</p>'}
+    </details>` : '<p class="ayuda">Todavía ningún maestro ha enviado su parte. El resumen aparece en cuanto llegue la primera.</p>'}
+  </div>
+
+  <form class="tarjeta" id="rep-dir">
+    <h2>Lo que llena la Dirección</h2>
+    <fieldset class="campo" style="border:0;padding:0"><legend style="font-weight:700">Motivo de la cita</legend>
+      ${MOTIVOS_REPORTE.map((m, i) => `<label class="check"><input type="checkbox" data-dmot="${i}" ${(dir.motivos || []).includes(m) ? 'checked' : ''}> ${esc(m)}</label>`).join('')}</fieldset>
+    <div class="rp-nums"><div class="campo"><label for="rd-tutor">Madre, padre o tutor que asiste</label><input id="rd-tutor" value="${esc(dir.tutor || '')}"></div>
+      <div class="campo"><label for="rd-cita">Fecha de la cita</label><input id="rd-cita" type="date" value="${esc(dir.cita || '')}"></div></div>
+    ${[['antecedentes', 'Antecedentes', 'Ej.: Se citó a la familia en septiembre por tareas; se comprometió a revisar la libreta cada semana.'],
+       ['acuerdos', 'Acuerdos de la reunión', 'Ej.: El alumno entregará las tareas pendientes de Matemáticas el viernes 20; la tutora revisará su avance cada lunes.'],
+       ['compAlumno', 'Compromisos del alumno', 'Ej.: Traer el uniforme completo y dejar el celular en la mochila durante las clases.'],
+       ['compFamilia', 'Compromisos de la familia', 'Ej.: Revisar y firmar la libreta todos los días y presentarse a la siguiente cita en un mes.']].map(([k, n, ej]) =>
+      `<div class="campo"><label for="rd-${k}">${n}</label><textarea id="rd-${k}" rows="3">${esc(dir[k] || '')}</textarea><p class="rp-ej">💡 ${ej}</p></div>`).join('')}
+    <div class="fila-btn"><button type="submit" class="btn">Guardar</button></div>
+  </form>
+
+  <div class="tarjeta">
+    <h2>Imprimir y cerrar</h2>
+    <p class="ayuda">La hoja sale en tamaño carta, con el concentrado de todas las asignaturas, las observaciones, lo de la Dirección y espacio para firmas.${S.hechas.length < R.materias.length ? ` <b>Aún faltan ${R.materias.length - S.hechas.length} asignaturas;</b> saldrán como «pendiente».` : ''}</p>
+    <div class="fila-btn">
+      <button type="button" class="btn oro" id="rep-imprimir">Imprimir reporte</button>
+      <button type="button" class="btn linea" id="rep-estado">${abierto ? 'Cerrar reporte (el link deja de funcionar)' : 'Volver a abrir el reporte'}</button>
+      <button type="button" class="btn peligro" id="rep-borrar">Eliminar reporte</button>
+    </div>
+  </div>`;
+
+  $('#rep-volver').addEventListener('click', () => { soltarReporte(); repA.lista = null; tabReportes(); scrollTo(0, 0); });
+  if (abierto) {
+    $('#rep-wa').addEventListener('click', () => open('https://wa.me/?text=' + encodeURIComponent(msj), '_blank', 'noopener'));
+    $('#rep-copiar').addEventListener('click', async () => { try { await navigator.clipboard.writeText(msj); aviso('Mensaje copiado. Pégalo en el grupo de maestros.'); } catch { prompt('Copia el mensaje:', msj); } });
+  }
+  const form = $('#rep-dir');
+  const leerDir = () => ({ motivos: [...form.querySelectorAll('[data-dmot]:checked')].map(x => MOTIVOS_REPORTE[+x.dataset.dmot]), tutor: $('#rd-tutor').value.trim(), cita: $('#rd-cita').value,
+    ...Object.fromEntries(['antecedentes', 'acuerdos', 'compAlumno', 'compFamilia'].map(k => [k, $('#rd-' + k).value.trim()])) });
+  form.addEventListener('input', () => { repA.borrador = leerDir(); });
+  form.addEventListener('change', () => { repA.borrador = leerDir(); });
+  form.addEventListener('submit', async e => {
+    e.preventDefault(); const d = leerDir();
+    try { await setDoc(doc(db, 'reportes', R.id, 'privado', 'direccion'), d); repA.dir = d; repA.borrador = null; aviso('Guardado.'); }
+    catch (x) { console.error(x); aviso('No se pudo guardar. Revisa la conexión.', true); }
+  });
+  $('#rep-imprimir').addEventListener('click', () => imprimirReporte(R, S, repA.borrador || repA.dir || {}, lec));
+  $('#rep-estado').addEventListener('click', async () => {
+    if (abierto && S.hechas.length < R.materias.length && !confirm(`Aún faltan ${R.materias.length - S.hechas.length} asignaturas. Si lo cierras, esos maestros ya no podrán llenarlo. ¿Cerrar?`)) return;
+    try { await updateDoc(doc(db, 'reportes', R.id), { estado: abierto ? 'cerrado' : 'abierto' }); bitacora(abierto ? 'reporte de alumno cerrado' : 'reporte de alumno reabierto', R.alumno.nombre); }
+    catch (x) { console.error(x); aviso('No se pudo cambiar. Revisa la conexión.', true); }
+  });
+  $('#rep-borrar').addEventListener('click', async () => {
+    if (!confirm(`¿Eliminar el reporte de ${R.alumno.nombre}? Se borran también las respuestas de los maestros. No se puede deshacer.`)) return;
+    try {
+      const lote = writeBatch(db);
+      Object.keys(repA.resp).forEach(k => lote.delete(doc(db, 'reportes', R.id, 'respuestas', k)));
+      lote.delete(doc(db, 'reportes', R.id, 'privado', 'direccion')); lote.delete(doc(db, 'reportes', R.id));
+      await lote.commit(); bitacora('reporte de alumno eliminado', R.alumno.nombre);
+      soltarReporte(); repA.lista = null; tabReportes(); aviso('Reporte eliminado.');
+    } catch (x) { console.error(x); aviso('No se pudo eliminar. Revisa la conexión.', true); }
+  });
+}
+
+function imprimirReporte(R, S, D, lec) {
+  const c = estado.config || {};
+  const txt = v => v == null || v === '' ? '—' : esc(v);
+  const opT = (o, v) => v == null ? '—' : ['✓', '±', '✗'][v];
+  const caja = (t, v) => `<h2>${t}</h2><div class="rg-caja">${esc(v || '')}</div>`;
+  imprimir(`<section class="hoja-imp rg">
+    <div class="rg-cab"><img src="logo-escuela.jpg" alt=""><div><b>Escuela Secundaria Técnica N.° 17 · Turno Vespertino</b><span>C.C.T. 04DST0017E · San Francisco de Campeche, Campeche · Ciclo escolar ${CICLO}</span></div></div>
+    <h1>Reporte general del alumno</h1>
+    <div class="rg-datos">
+      <div><small>Alumno(a)</small>${esc(R.alumno.nombre)}</div><div><small>Grado y grupo</small>${R.alumno.grado}.° «${esc(R.alumno.grupo)}»</div><div><small>Fecha de la cita</small>${D.cita ? fCorta(D.cita) : '________________'}</div>
+      <div><small>Periodo que abarca</small>Del ${fCorta(R.desde)} al ${fCorta(R.hasta)}</div><div><small>Madre, padre o tutor</small>${txt(D.tutor)}</div><div><small>Motivo</small>${(D.motivos || []).map(esc).join('; ') || '—'}</div>
+    </div>
+    <div class="rg-res">
+      <div>Asignaturas en riesgo<b>${S.riesgo.length} de ${R.materias.length}</b></div>
+      <div>Faltas / retardos<b>${S.faltas} / ${S.retardos}</b></div>
+      <div>Tareas entregadas<b>${S.tareasTot ? `${S.tareasEnt} de ${S.tareasTot}` : '—'}</b></div>
+      <div>Comprensión lectora<b>${lec ? r1(lec.prom) : '—'}</b></div>
+    </div>
+    <h2>Concentrado por asignatura</h2>
+    <table><thead><tr><th>Asignatura</th><th>Docente</th><th>Faltas</th><th>Ret.</th><th>Tareas</th><th>Calif.</th>${OPCIONES_REPORTE.map(o => `<th>${esc(o.corto)}</th>`).join('')}</tr></thead>
+    <tbody>${S.filas.map(({ m, r }) => r ? `<tr><td class="izq">${esc(m.materia)}</td><td class="izq">${esc(r.docente)}</td><td>${txt(r.faltas)}</td><td>${txt(r.retardos)}</td><td>${r.tareasTot ? `${r.tareasEnt ?? 0}/${r.tareasTot}` : '—'}</td><td class="${r.riesgo || (r.calificacion != null && r.calificacion < MINIMA_REPORTE) ? 'riesgo' : ''}">${txt(r.calificacion)}${r.riesgo ? ' *' : ''}</td>${OPCIONES_REPORTE.map(o => `<td>${opT(o, r[o.id])}</td>`).join('')}</tr>`
+      : `<tr><td class="izq">${esc(m.materia)}</td><td class="izq">${esc(m.docente)}</td><td colspan="${4 + OPCIONES_REPORTE.length}">Pendiente</td></tr>`).join('')}</tbody></table>
+    <p class="rg-ley">✓ bien · ± regular · ✗ requiere atención · * en riesgo de reprobar. ${OPCIONES_REPORTE.map(o => `${o.corto} = ${o.nombre}`).join('; ')}.</p>
+    <h2>Conductas señaladas por los docentes</h2>
+    ${S.conductas.length ? `<table><tbody>${S.conductas.map(([k, ms]) => `<tr><td class="izq" style="width:40%">${esc(k)}</td><td class="izq">${ms.map(esc).join(', ')}</td></tr>`).join('')}</tbody></table>` : '<p>Ningún docente señaló problemas de conducta.</p>'}
+    <h2>Observaciones de los docentes</h2>
+    <div class="rg-obs">${S.hechas.filter(({ r }) => TEXTOS_REPORTE.some(t => r[t.id])).map(({ m, r }) => `<p><b>${esc(m.materia)}:</b> ${TEXTOS_REPORTE.filter(t => r[t.id]).map(t => `<i>${esc(t.nombre)}:</i> ${esc(r[t.id])}`).join(' ')}</p>`).join('') || '<p>Sin observaciones escritas.</p>'}</div>
+    ${D.antecedentes ? caja('Antecedentes', D.antecedentes) : ''}
+    ${caja('Acuerdos', D.acuerdos)}
+    ${caja('Compromisos del alumno', D.compAlumno)}
+    ${caja('Compromisos de la familia', D.compFamilia)}
+    <div class="rg-firmas"><div>Madre, padre o tutor<br>${esc(D.tutor || '')}</div><div>Alumno(a)<br>${esc(R.alumno.nombre)}</div><div>${esc(c.subdirector || 'Subdirección')}<br>${esc(c.cargoSubdirector || 'Subdirector')}</div><div>${esc(c.director || 'Dirección')}<br>${esc(c.cargoDirector || 'Director')}</div></div>
+  </section>`);
+}
+
+function editarPlantilla() {
+  cargarPlantilla().then(plant => {
+    let g = LISTA_GRUPOS[0].id; const copia = JSON.parse(JSON.stringify(plant));
+    const pintar = () => {
+      $('#modal-cuerpo').innerHTML = `<p class="ayuda">Asignaturas y maestros de cada grupo, tomados del Horario General Oficial 2026-2027. Corrige aquí cuando cambie un maestro (por ejemplo, cuando llegue el de Español). Lo que cambies se usa en los reportes nuevos.</p>
+        <div class="grupos" role="group" aria-label="Grupos">${LISTA_GRUPOS.map(x => `<button type="button" class="grupo g${x.grado}" data-pg="${x.id}" aria-pressed="${g === x.id}"><b>${x.grado}.° ${x.grupo}</b></button>`).join('')}</div>
+        <div id="pl-filas" style="margin-top:.8rem">${(copia[g] || []).map((m, i) => `<div class="plant-fila"><input data-pm="${i}" value="${esc(m.materia)}" aria-label="Asignatura"><input data-pd="${i}" value="${esc(m.docente)}" aria-label="Docente"><button type="button" class="btn peligro chico" data-px="${i}" aria-label="Quitar">×</button></div>`).join('')}</div>
+        <div class="fila-btn" style="margin-top:.6rem"><button type="button" class="btn linea chico" id="pl-mas">+ Agregar asignatura</button><button type="button" class="btn linea chico" id="pl-reset">Restaurar el horario oficial de este grupo</button></div>
+        <div class="fila-btn" style="margin-top:1rem"><button type="button" class="btn oro" id="pl-guardar">Guardar cambios</button></div>`;
+      const leer = () => { copia[g] = [...document.querySelectorAll('[data-pm]')].map((x, i) => ({ materia: x.value.trim(), docente: document.querySelector(`[data-pd="${i}"]`).value.trim() })); };
+      document.querySelectorAll('[data-pg]').forEach(b => b.addEventListener('click', () => { leer(); g = b.dataset.pg; pintar(); }));
+      document.querySelectorAll('[data-px]').forEach(b => b.addEventListener('click', () => { leer(); copia[g].splice(+b.dataset.px, 1); pintar(); }));
+      $('#pl-mas').addEventListener('click', () => { leer(); (copia[g] = copia[g] || []).push({ materia: '', docente: '' }); pintar(); document.querySelector(`[data-pm="${copia[g].length - 1}"]`).focus(); });
+      $('#pl-reset').addEventListener('click', () => { copia[g] = plantillaBase()[g]; pintar(); });
+      $('#pl-guardar').addEventListener('click', async () => {
+        leer(); Object.keys(copia).forEach(k => { copia[k] = copia[k].filter(m => m.materia); });
+        try { await setDoc(doc(db, 'config', 'plantilla'), { grupos: copia, actualizado: serverTimestamp() }); repA.plantilla = copia; bitacora('maestros por grupo actualizados', ''); cerrarModal(); aviso('Guardado.'); }
+        catch (x) { console.error(x); aviso('No se pudo guardar. Revisa la conexión.', true); }
+      });
+    };
+    abrirModal('Maestros por grupo', ''); pintar();
+  });
 }
 
 /* Alumnos */
