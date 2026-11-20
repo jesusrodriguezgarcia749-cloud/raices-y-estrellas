@@ -1629,7 +1629,7 @@ function tabReportes() {
   <div class="tarjeta">
     <h2>Reporte general del alumno</h2>
     <p class="ayuda">Para citar a la familia de un alumno: crea su reporte, comparte el link con los maestros por WhatsApp y cada quien llena su asignatura desde el celular (asistencia, uniforme, tareas, trabajo, conducta, calificación y observaciones). Aquí ves quién falta, el resumen y lo imprimes en carta para la cita.</p>
-    <div class="fila-btn"><button type="button" class="btn oro" id="rep-nuevo">Nuevo reporte</button><button type="button" class="btn linea" id="rep-plant">Maestros por grupo</button></div>
+    <div class="fila-btn"><button type="button" class="btn oro" id="rep-nuevo">Nuevo reporte</button><button type="button" class="btn linea" id="rep-plant">Maestros por grupo</button>${L.some(r => r.estado === 'abierto') ? '<button type="button" class="btn linea" id="rep-pend">¿Quién falta? (todos los reportes)</button>' : ''}</div>
   </div>
   <div class="tarjeta">
     <h2>Reportes</h2>
@@ -1641,7 +1641,50 @@ function tabReportes() {
   </div>`;
   $('#rep-nuevo').addEventListener('click', formNuevoReporte);
   $('#rep-plant').addEventListener('click', editarPlantilla);
+  $('#rep-pend')?.addEventListener('click', pendientesReportes);
   p.querySelectorAll('[data-rep]').forEach(b => b.addEventListener('click', () => abrirReporte(b.dataset.rep)));
+}
+
+/* Concentrado de todos los reportes abiertos: qué maestros ya llenaron y quién falta, por alumno y por maestro,
+   con un solo mensaje (con los links) para el grupo de WhatsApp y versión para imprimir en carta. */
+function pendientesReportes() {
+  const A = (repA.lista || []).filter(r => r.estado === 'abierto').sort((a, b) => `${a.alumno.grado}${a.alumno.grupo}`.localeCompare(`${b.alumno.grado}${b.alumno.grupo}`) || a.alumno.nombre.localeCompare(b.alumno.nombre, 'es'));
+  const hecho = (r, m) => !!(r.enviados || {})[m.id];
+  const hoy = hoyISO(), vencido = r => r.limite && r.limite < hoy;
+  const alum = r => `${r.alumno.nombre} (${r.alumno.grado}.° ${r.alumno.grupo})`;
+  const porMaestro = {};
+  A.forEach(r => r.materias.forEach(m => { if (/sin docente/i.test(m.docente || '')) return; const k = m.docente || 'Sin nombre'; (porMaestro[k] ||= { faltan: [], listos: 0 }); if (hecho(r, m)) porMaestro[k].listos++; else porMaestro[k].faltan.push({ r, m }); }));
+  const maestros = Object.entries(porMaestro).sort((a, b) => b[1].faltan.length - a[1].faltan.length || a[0].localeCompare(b[0], 'es'));
+  const pend = maestros.filter(([, v]) => v.faltan.length), listos = maestros.filter(([, v]) => !v.faltan.length);
+  const totM = A.reduce((n, r) => n + r.materias.filter(m => !/sin docente/i.test(m.docente || '')).length, 0), totH = A.reduce((n, r) => n + r.materias.filter(m => !/sin docente/i.test(m.docente || '') && hecho(r, m)).length, 0);
+  const lim = [...new Set(A.map(r => r.limite).filter(Boolean))].sort();
+  const msj = `*Reporte general del alumno · pendientes*\n` + (lim.length ? `Fecha de entrega: ${lim.map(fCorta).join(', ')}.\n` : '') +
+    `Compañeros, les comparto los reportes que aún faltan por llenar. Cada link abre el reporte del alumno; elijan su asignatura y llénenlo desde el celular. ¡Gracias!\n\n` +
+    pend.map(([d, v]) => `*${d}*\n` + v.faltan.map(({ r, m }) => `• ${alum(r)} · ${m.materia}\n  ${urlReporte(r.id)}`).join('\n')).join('\n\n') +
+    (listos.length ? `\n\nYa entregaron todo: ${listos.map(([d]) => d).join('; ')}. ¡Gracias!` : '');
+  const conDoc = r => r.materias.filter(m => !/sin docente/i.test(m.docente || ''));
+  const tablaAlumnos = A.map(r => { const ok = conDoc(r).filter(m => hecho(r, m)), no = conDoc(r).filter(m => !hecho(r, m));
+    return `<div class="rep-fila" style="display:block"><b>${esc(alum(r))}</b> <small>· ${ok.length} de ${conDoc(r).length} asignaturas${r.limite ? ` · entrega: ${fCorta(r.limite)}${vencido(r) && no.length ? ' <b style="color:#a3362a">(vencido)</b>' : ''}` : ''}</small>
+      <div style="margin:.35rem 0 0;font-size:.92rem"><span style="color:#2f6b3f">✓ Ya llenaron:</span> ${ok.length ? ok.map(m => esc(`${m.docente} (${m.materia})`)).join('; ') : '—'}</div>
+      <div style="font-size:.92rem"><span style="color:#a3362a">✗ Faltan:</span> ${no.length ? no.map(m => esc(`${m.docente} (${m.materia})`)).join('; ') : '¡nadie!'}</div>
+      <div style="font-size:.8rem;word-break:break-all;opacity:.75">${esc(urlReporte(r.id))}</div></div>`; }).join('');
+  const tablaMaestros = pend.map(([d, v]) => `<div class="rep-fila" style="display:block"><b>${esc(d)}</b> <small>· le faltan ${v.faltan.length}${v.listos ? `, ya entregó ${v.listos}` : ''}</small>
+      <ul style="margin:.3rem 0 0 1.1rem;font-size:.92rem">${v.faltan.map(({ r, m }) => `<li>${esc(alum(r))} · ${esc(m.materia)} <span style="word-break:break-all;opacity:.75;font-size:.8rem">${esc(urlReporte(r.id))}</span></li>`).join('')}</ul></div>`).join('')
+    + (listos.length ? `<p class="ayuda" style="margin-top:.6rem">✓ Ya entregaron todos sus reportes: ${esc(listos.map(([d]) => d).join('; '))}</p>` : '');
+  const p = $('#panel');
+  p.innerHTML = `<div class="fila-btn" style="margin-bottom:.8rem"><button type="button" class="btn linea chico" id="pd-volver">← Todos los reportes</button></div>
+  <div class="tarjeta"><h2>¿Quién falta?</h2>
+    <p class="ayuda">${A.length} reportes abiertos · ${totH} de ${totM} asignaturas llenas · ${pend.length} ${pend.length === 1 ? 'maestro' : 'maestros'} con pendientes.</p>
+    <div class="fila-btn"><button type="button" class="btn oro chico" id="pd-wa">Enviar pendientes por WhatsApp</button><button type="button" class="btn linea chico" id="pd-copiar">Copiar mensaje</button><button type="button" class="btn linea chico" id="pd-imp">Imprimir o guardar PDF</button></div></div>
+  <div class="tarjeta"><h2>Por maestro (lo que le falta)</h2>${tablaMaestros || '<p class="vacio">¡Todos los maestros ya llenaron sus reportes!</p>'}</div>
+  <div class="tarjeta"><h2>Por alumno</h2>${tablaAlumnos}</div>`;
+  $('#pd-volver').addEventListener('click', () => { tabReportes(); scrollTo(0, 0); });
+  $('#pd-wa').addEventListener('click', () => open('https://wa.me/?text=' + encodeURIComponent(msj), '_blank', 'noopener'));
+  $('#pd-copiar').addEventListener('click', async () => { try { await navigator.clipboard.writeText(msj); aviso('Mensaje copiado. Pégalo en el grupo de maestros.'); } catch { prompt('Copia el mensaje:', msj); } });
+  $('#pd-imp').addEventListener('click', () => imprimir(`<div class="hoja-imp"><h2 style="margin:0 0 .2rem">Reporte general del alumno · ¿quién falta?</h2>
+    <p style="margin:0 0 .8rem">EST 17 · Turno Vespertino · corte al ${fCorta(hoy)} · ${totH} de ${totM} asignaturas llenas</p>
+    <h3>Por maestro</h3>${tablaMaestros || '<p>Nadie tiene pendientes.</p>'}<h3>Por alumno</h3>${tablaAlumnos}</div>`));
+  scrollTo(0, 0);
 }
 
 async function formNuevoReporte() {
