@@ -48,7 +48,7 @@ async function iniciar() {
 }
 
 function cab() {
-  return `<div class="rp-alumno"><p class="rp-kicker">Reportes de incidencias · EST 17 Vespertino</p><h1>${esc(B.maestro)}</h1>
+  return `<div class="rp-alumno"><p class="rp-kicker">Reportes de incidencias · EST 17 Vespertino</p><h1>${esc(B.maestro)}</h1>${B.cargo && B.cargo !== 'Docente' ? `<p style="margin:0 0 .3rem;color:#fff"><b>${esc(B.cargo)}</b></p>` : ''}
     <p>Este link es solo tuyo: tus reportes llegan a la Subdirección con tu nombre. No lo compartas.</p></div>
     <div class="fila-btn" style="margin:0 0 1rem"><button type="button" class="btn ${vistaAct === 'nuevo' ? 'oro' : 'linea'}" data-v="nuevo">Nuevo reporte</button><button type="button" class="btn ${vistaAct === 'mios' ? 'oro' : 'linea'}" data-v="mios">Mis reportes</button></div>`;
 }
@@ -58,6 +58,7 @@ function ligarCab() { vista.querySelectorAll('[data-v]').forEach(b => b.addEvent
 let alSel = null;
 function formulario() {
   const p = leerBorr() || {};
+  const doc_ = !B.cargo || B.cargo === 'Docente', atDef = doc_ ? 'maestro' : 'tutor';
   const grupos = [...new Set((B.alumnos || []).map(a => a.g))].sort();
   alSel = p.al ? (B.alumnos || []).find(a => a.c === p.al) || null : null;
   vista.innerHTML = `${cab()}
@@ -72,7 +73,7 @@ function formulario() {
     <h3>2. ¿Cuándo y en qué clase?</h3>
     <div class="rp-nums"><div class="campo"><label for="f-fecha">Fecha</label><input id="f-fecha" type="date" value="${p.fecha || hoyISO()}"></div>
       <div class="campo"><label for="f-hora">Hora</label><input id="f-hora" type="time" value="${p.hora || horaAhora()}"></div>
-      <div class="campo"><label for="f-mat">Asignatura o momento</label><input id="f-mat" list="f-mats" value="${esc(p.mat || (B.materias || [])[0] || '')}"><datalist id="f-mats">${[...(B.materias || []), 'Receso', 'Entrada', 'Salida', 'Honores'].map(m => `<option>${esc(m)}</option>`).join('')}</datalist></div></div>
+      <div class="campo"><label for="f-mat">${doc_ ? 'Asignatura o momento' : 'Momento o lugar'}</label><input id="f-mat" list="f-mats" value="${esc(p.mat || (doc_ ? (B.materias || [])[0] || '' : ''))}" placeholder="${doc_ ? '' : 'Receso, entrada, salida, pasillo…'}"><datalist id="f-mats">${[...(B.materias || []), 'Receso', 'Entrada', 'Salida', 'Honores', 'Pasillo', 'Baños', 'Cancha', 'Cooperativa'].map(m => `<option>${esc(m)}</option>`).join('')}</datalist></div></div>
 
     <h3>3. ¿Qué pasó?</h3>
     <fieldset class="rp-preg"><legend>Tipo de falta (marca las que apliquen)</legend><div class="rp-conductas">${TIPOS.map(t => `<label class="check"><input type="checkbox" data-t="${esc(t)}" ${(p.tipos || []).includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></fieldset>
@@ -83,8 +84,9 @@ function formulario() {
 
     <h3>4. ¿Quién lo atiende?</h3>
     <fieldset class="rp-preg" id="f-at"><div class="rp-ops" style="grid-template-columns:1fr 1fr">
-      <button type="button" class="rp-op" data-at="maestro" aria-pressed="${(p.at || 'maestro') === 'maestro'}" style="text-align:left"><b>Lo atiendo yo</b><br><small>Faltas de material, tareas o conducta en clase. Usted cita al padre de familia y da seguimiento.</small></button>
-      <button type="button" class="rp-op" data-at="subdireccion" aria-pressed="${p.at === 'subdireccion'}" style="text-align:left"><b>Lo atendemos juntos con la Subdirección</b><br><small>Para casos graves, como agresiones, acoso, autolesiones o reincidencia. Usted sigue como responsable; la Subdirección le acompaña en la cita y da el seguimiento legal cuando haga falta.</small></button></div></fieldset>
+      ${doc_ ? `<button type="button" class="rp-op" data-at="maestro" style="text-align:left"><b>Lo atiendo yo</b><br><small>Faltas de material, tareas o conducta en clase. Usted cita al padre de familia y da seguimiento.</small></button>`
+        : `<button type="button" class="rp-op" data-at="tutor" style="text-align:left"><b>Lo turno al tutor del grupo</b><br><small>Faltas leves o moderadas. La Subdirección le avisa al tutor para que le dé seguimiento con la familia.</small></button>`}
+      <button type="button" class="rp-op" data-at="subdireccion" aria-pressed="${p.at === 'subdireccion'}" style="text-align:left"><b>Lo atendemos juntos con la Subdirección</b><br><small>${doc_ ? 'Para casos graves, como agresiones, acoso, autolesiones o reincidencia. Usted sigue como responsable; la Subdirección le acompaña en la cita y da el seguimiento legal cuando haga falta.' : 'Para casos graves, como agresiones, acoso, autolesiones o reincidencia. La Subdirección lo atiende con el tutor y la familia, y da el seguimiento legal cuando haga falta.'}</small></button></div></fieldset>
     <div id="f-cita">
       <div class="rp-nums"><div class="campo"><label for="f-cf">Día de la cita</label><input id="f-cf" type="date" value="${p.cf || ''}"></div>
         <div class="campo"><label for="f-ch">Hora</label><input id="f-ch" type="time" value="${p.ch || ''}"></div></div>
@@ -107,14 +109,14 @@ function formulario() {
   };
   $('#f-q').addEventListener('input', buscar); $('#f-g').addEventListener('change', buscar);
   pintarSel();
-  const ponAt = at => { f.querySelectorAll('[data-at]').forEach(x => x.setAttribute('aria-pressed', x.dataset.at === at));
+  const ponAt = at => { f.querySelectorAll('[data-at]').forEach(x => x.setAttribute('aria-pressed', x.dataset.at === at)); $('#f-cita').hidden = at === 'tutor';
     $('#f-cita-ayuda').textContent = at === 'maestro' ? 'El citatorio lo envía la escuela por WhatsApp a la familia, para que quede como evidencia. Después de la cita, entra a «Mis reportes» y anota si asistió.' : 'Propón el día y la hora; la Subdirección la confirma y la escuela envía el citatorio por WhatsApp. Si no sabes cuándo, déjalo en blanco y la Subdirección te propone una fecha.'; };
-  ponAt(p.at || 'maestro');
-  f.querySelectorAll('[data-gr]').forEach(b => b.addEventListener('click', () => { f.querySelectorAll('[data-gr]').forEach(x => x.setAttribute('aria-pressed', x === b)); ponAt(b.dataset.gr === 'grave' ? 'subdireccion' : 'maestro'); borr(); }));
+  ponAt(p.at && f.querySelector(`[data-at="${p.at}"]`) ? p.at : atDef);
+  f.querySelectorAll('[data-gr]').forEach(b => b.addEventListener('click', () => { f.querySelectorAll('[data-gr]').forEach(x => x.setAttribute('aria-pressed', x === b)); ponAt(b.dataset.gr === 'grave' ? 'subdireccion' : atDef); borr(); }));
   f.querySelectorAll('[data-at]').forEach(b => b.addEventListener('click', () => { ponAt(b.dataset.at); borr(); }));
   const leer = () => ({ al: alSel?.c || '', g: $('#f-g').value, fecha: $('#f-fecha').value, hora: $('#f-hora').value, mat: $('#f-mat').value.trim(),
     tipos: [...f.querySelectorAll('[data-t]:checked')].map(x => x.dataset.t), grav: f.querySelector('[data-gr][aria-pressed="true"]')?.dataset.gr || 'leve',
-    hechos: $('#f-hechos').value.trim(), at: f.querySelector('[data-at][aria-pressed="true"]')?.dataset.at || 'maestro', cf: $('#f-cf').value, ch: $('#f-ch').value, cm: $('#f-cm').value.trim() });
+    hechos: $('#f-hechos').value.trim(), at: f.querySelector('[data-at][aria-pressed="true"]')?.dataset.at || atDef, cf: $('#f-cf').value, ch: $('#f-ch').value, cm: $('#f-cm').value.trim() });
   const borr = () => guardarBorr(leer());
   f.addEventListener('input', () => { borr(); $('#f-err').textContent = ''; });
   f.addEventListener('submit', async e => {
@@ -123,15 +125,16 @@ function formulario() {
     if (!d.fecha) { err.textContent = 'Falta la fecha.'; return; }
     if (d.hechos.length < 10) { err.textContent = 'Describe lo que pasó.'; return; }
     if (d.at === 'maestro' && (!d.cf || !d.ch)) { err.textContent = 'Pon el día y la hora de la cita con el padre de familia.'; return; }
+    if (d.at === 'tutor') { d.cf = ''; d.ch = ''; }
     if (d.at !== 'maestro' && !!d.cf !== !!d.ch) { err.textContent = 'Para proponer la cita pon el día y la hora, o deja los dos en blanco.'; return; }
     const conCita = d.at === 'maestro' || (d.cf && d.ch);
     const b = $('#f-ok'); b.disabled = true; b.textContent = 'Enviando…';
-    const inc = { token, origen: 'maestro', maestro: B.maestro, reporta: B.maestro, curp: alSel.c, alumno: alSel.n, grado: +alSel.g[0], grupo: alSel.g.slice(1),
+    const inc = { token, origen: 'maestro', maestro: B.maestro, reporta: B.maestro, cargoReporta: B.cargo || 'Docente', curp: alSel.c, alumno: alSel.n, grado: +alSel.g[0], grupo: alSel.g.slice(1),
       fecha: d.fecha, hora: d.hora, asignatura: d.mat, tipos: d.tipos, gravedad: d.grav, hechos: d.hechos.slice(0, 2000), atiende: d.at, estado: d.at === 'maestro' ? 'seguimiento' : 'pendiente', seg: [],
       cita: conCita ? { fecha: d.cf, hora: d.ch, motivo: d.cm, con: d.at === 'maestro' ? B.maestro : `${B.maestro} y Subdirección`, enviado: '', resultado: '', acuerdos: '', hist: [], ...(d.at === 'maestro' ? {} : { porConfirmar: true }) } : null,
       creadoISO: new Date().toISOString(), revisar: false };
     try { await addDoc(collection(db, 'buzon', token, 'inc'), inc); try { localStorage.removeItem(BORR); } catch { /* */ }
-      alSel = null; vista.innerHTML = `${cab()}<div class="tarjeta rp-msj"><h2>✓ Reporte enviado</h2><p>Ya le llegó a la Subdirección${d.grav === 'grave' ? ' como <b>urgente</b>' : ''}. ${d.at === 'maestro' ? 'La escuela enviará el citatorio a la familia. Después de la cita, anota en «Mis reportes» si asistió.' : 'La Subdirección se pondrá de acuerdo con usted para atenderlo juntos. Puede ver el avance en «Mis reportes».'}</p>
+      alSel = null; vista.innerHTML = `${cab()}<div class="tarjeta rp-msj"><h2>✓ Reporte enviado</h2><p>Ya le llegó a la Subdirección${d.grav === 'grave' ? ' como <b>urgente</b>' : ''}. ${d.at === 'maestro' ? 'La escuela enviará el citatorio a la familia. Después de la cita, anota en «Mis reportes» si asistió.' : d.at === 'tutor' ? 'La Subdirección le avisará al tutor del grupo. Puede ver el avance en «Mis reportes».' : 'La Subdirección se pondrá de acuerdo con usted para atenderlo juntos. Puede ver el avance en «Mis reportes».'}</p>
         <div class="fila-btn"><button type="button" class="btn oro" data-v="nuevo">Hacer otro reporte</button><button type="button" class="btn linea" data-v="mios">Ver mis reportes</button></div></div>`; ligarCab(); scrollTo(0, 0);
     } catch (x) { console.error(x); b.disabled = false; b.textContent = 'Enviar reporte'; err.textContent = 'No se pudo enviar. Revisa tu conexión e inténtalo de nuevo; lo que escribiste no se borra.'; }
   });

@@ -1881,7 +1881,7 @@ function detalleReporte() {
     let inc = null; const conf = $('#rep-inc-conf').checked;
     if ($('#rep-inc').checked) {
       e.target.disabled = true;
-      try { if (!incA.lista) await cargarIncidencias(); } catch (x) { console.error(x); }
+      try { await cargarIncidencias(); } catch (x) { console.error(x); }
       e.target.disabled = false;
       const nom = normal(R.alumno.nombre);
       inc = (incA.lista || []).filter(i => R.curp ? i.curp === R.curp : normal(i.alumno || '') === nom).sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
@@ -2641,6 +2641,8 @@ const ESTADOS_INC = { pendiente: 'Pendiente', seguimiento: 'En seguimiento', ate
 const estInc = i => ESTADOS_INC[i.estado] ? i.estado : 'pendiente';
 const estTxt = i => ESTADOS_INC[estInc(i)];
 const segBase = i => Array.isArray(i.seg) ? i.seg : (i.acciones || i.atendidoPor || i.enterado) ? [{ fecha: i.fechaAtencion || i.fecha || '', quien: i.atendidoPor || '', que: i.acciones || '', enterado: i.enterado || '', docentes: true }] : [];
+const CARGOS_PERS = ['Docente', 'Subdirección', 'Dirección', 'Prefectura', 'Trabajo social', 'Coordinación', 'Administrativo', 'Intendencia', 'Otro'];
+const nombresPersonal = () => [...new Set([...(incA.personal || []), ...estado.maestros.map(m => m.nombre).filter(Boolean)])].sort((a, b) => a.localeCompare(b, 'es'));
 const RES_CITA = { asistio: 'asistió', noasistio: 'no asistió', reprogramada: 'se reprogramó' };
 const hora12 = h => { if (!h) return ''; const [H, M] = h.split(':').map(Number); return `${((H + 11) % 12) + 1}:${String(M).padStart(2, '0')} ${H < 12 ? 'a. m.' : 'p. m.'}`; };
 // La cita con la familia (del link del maestro o de la Subdirección) también cuenta como seguimiento.
@@ -2694,8 +2696,12 @@ function cajaCita(i) {
     <br><small>${c.porConfirmar && !c.enviado ? '<b>Fecha propuesta por el maestro: confírmala o cámbiala antes de enviar el citatorio.</b> ' : ''}${c.enviado ? `📨 Citatorio enviado el ${fTab(c.enviado.slice(0, 10))}` : '<b>⏳ Falta enviar el citatorio</b>'}${c.resultado ? ` · <b>${RES_CITA[c.resultado]}</b>` : venc ? ' · <b style="color:var(--rojo)">la fecha ya pasó y no tiene resultado</b>' : ''}${(c.hist || []).filter(h => h.resultado === 'noasistio').length >= 2 ? ' · <b style="color:var(--rojo)">la familia no ha asistido dos veces: pasa a Subdirección</b>' : ''}</small>
     <div class="fila-btn" style="margin-top:.3rem">${c.porConfirmar && !c.enviado ? `<button type="button" class="btn linea chico" data-inc-nc="${i.id}">Confirmar o cambiar fecha</button>` : ''}${c.resultado === 'asistio' ? '' : `<button type="button" class="btn ${c.enviado ? 'linea' : 'oro'} chico" data-inc-cit="${i.id}">${c.enviado ? 'Reenviar citatorio' : 'Enviar citatorio'}</button>`}<button type="button" class="btn linea chico" data-inc-res="${i.id}">Resultado de la cita</button></div></div>`;
 }
+function avisoTutorTxt(i) {
+  const g = grpInc(i);
+  return `Maestro(a) ${TUTORES[g] || ''}: le informo que ${i.reporta || 'el personal de la escuela'}${i.cargoReporta && i.cargoReporta !== 'Docente' ? ` (${i.cargoReporta})` : ''} reportó una incidencia de su alumno(a) ${titulo(nomInc(i))}, de ${g.replace(/^(\d)/, '$1.° ')}, el ${fCorta(i.fecha)}${i.asignatura ? ` (${i.asignatura})` : ''}:\n\n${esConf(i) ? 'Es un asunto confidencial; lo platicamos en persona.' : i.hechos}\n\nComo tutor(a) del grupo, le pido darle seguimiento y, si es necesario, citar a la familia. La Subdirección queda a sus órdenes.`;
+}
 function botonesInc(i, exp = true) {
-  return `<div class="fila-btn" style="margin-top:.4rem">${i.cita ? '' : `<button type="button" class="btn linea chico" data-inc-nc="${i.id}">Citar a la familia</button>`}<button type="button" class="btn ${estInc(i) === 'atendido' ? 'linea' : 'oro'} chico" data-inc-at="${i.id}">Seguimiento</button><button type="button" class="btn linea chico" data-inc-ed="${i.id}">Editar</button>${exp ? `<button type="button" class="btn linea chico" data-inc-exp="${esc(claveAl(i))}">Expediente del alumno</button>` : ''}</div>`;
+  return `<div class="fila-btn" style="margin-top:.4rem">${i.atiende === 'tutor' ? `<a class="btn linea chico" href="https://wa.me/?text=${encodeURIComponent(avisoTutorTxt(i))}" target="_blank" rel="noopener">Avisar al tutor</a>` : ''}${i.cita ? '' : `<button type="button" class="btn linea chico" data-inc-nc="${i.id}">Citar a la familia</button>`}<button type="button" class="btn ${estInc(i) === 'atendido' ? 'linea' : 'oro'} chico" data-inc-at="${i.id}">Seguimiento</button><button type="button" class="btn linea chico" data-inc-ed="${i.id}">Editar</button>${exp ? `<button type="button" class="btn linea chico" data-inc-exp="${esc(claveAl(i))}">Expediente del alumno</button>` : ''}</div>`;
 }
 function filaInc(i, exp = true) {
   const S = anotInc(i), e = estInc(i);
@@ -2704,7 +2710,7 @@ function filaInc(i, exp = true) {
       <span class="envio ${colEst[e]}"${e === 'seguimiento' ? ' style="background:#E3ECF8;color:#1F3E6E"' : ''}>${estTxt(i)}</span></div>
     <div style="margin:.3rem 0">${chipsTipos(i.tipos)}</div>
     <p style="margin:.2rem 0">${esc(i.hechos || '')}</p>
-    <small class="ayuda">Reporta: ${esc(i.reporta || '—')}${i.asignatura ? ` · ${esc(i.asignatura)}` : ''}${i.hora ? ` · ${hora12(i.hora)}` : ''}${i.origen === 'maestro' ? ` · ${i.atiende === 'maestro' ? 'Lo atiende el maestro' : 'Lo atienden juntos el maestro y la Subdirección'}` : ''}</small>
+    <small class="ayuda">Reporta: ${esc(i.reporta || '—')}${i.cargoReporta && i.cargoReporta !== 'Docente' ? ` (${esc(i.cargoReporta)})` : ''}${i.capturo ? ' · lo capturó la Subdirección' : ''}${i.asignatura ? ` · ${esc(i.asignatura)}` : ''}${i.hora ? ` · ${hora12(i.hora)}` : ''}${i.origen === 'maestro' ? ` · ${i.atiende === 'maestro' ? 'Lo atiende el maestro' : i.atiende === 'tutor' ? `Turnado al tutor: ${esc(TUTORES[grpInc(i)] || '—')}` : 'Lo atienden juntos con la Subdirección'}` : ''}</small>
     ${cajaCita(i)}
     ${S.length ? `<ul style="margin:.35rem 0 0;padding-left:1.1rem;font-size:.92rem">${S.map(a => `<li>${esc(anotTxt(a))}${a.docentes === false ? ' <small class="ayuda">(solo Subdirección)</small>' : ''}</li>`).join('')}</ul>` : ''}
     ${botonesInc(i, exp)}</div>`;
@@ -2722,7 +2728,7 @@ function tabIncidencias() {
   <div class="tarjeta"><h2>Incidencias</h2>
     <p class="ayuda">Reportes de conducta de los alumnos. Mándale a Claude las fotos de los reportes en papel; él te entrega un archivo que subes aquí con «Importar».</p>
     <div class="resumen"><div><b>${L.length}</b>reportes</div><div><b>${pend}</b>pendientes</div><div><b>${segN}</b>en seguimiento</div><div><b>${L.length - pend - segN}</b>atendidos</div><div><b>${Object.keys(porAl).length}</b>alumnos</div></div>
-    <div class="fila-btn"><button type="button" class="btn oro" id="inc-nueva">Registrar incidencia</button><button type="button" class="btn linea" id="inc-imp">Importar archivo de Claude</button><input type="file" id="inc-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="inc-semana">Hoja semanal por grupo</button><button type="button" class="btn linea" id="inc-conc">Concentrado para docentes</button><button type="button" class="btn linea" id="inc-dir">📇 Directorio de papás</button><button type="button" class="btn linea" id="inc-links">🔗 Links de los maestros</button></div></div>
+    <div class="fila-btn"><button type="button" class="btn oro" id="inc-nueva">Registrar incidencia</button><button type="button" class="btn linea" id="inc-imp">Importar archivo de Claude</button><input type="file" id="inc-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="inc-semana">Hoja semanal por grupo</button><button type="button" class="btn linea" id="inc-conc">Concentrado para docentes</button><button type="button" class="btn linea" id="inc-dir">📇 Directorio de papás</button><button type="button" class="btn linea" id="inc-links">🔗 Links del personal</button></div></div>
   ${bandejaInc(L)}
   <div class="grupos" role="group" aria-label="Grupos"><button type="button" class="grupo" data-ig="todos" aria-pressed="${incA.grupo === 'todos'}"><b>Todos</b><span>${L.length}</span></button>
     ${LISTA_GRUPOS.map(x => `<button type="button" class="grupo g${x.grado}" data-ig="${x.id}" aria-pressed="${incA.grupo === x.id}"><b>${x.grado}.° ${x.grupo}</b><span>${(n => `${n} reporte${n === 1 ? '' : 's'}`)(L.filter(i => grpInc(i) === x.id).length)}</span></button>`).join('')}</div>
@@ -2771,7 +2777,9 @@ function formIncidencia(i, alVolver = null) {
     ${!x.curp && x.alumno ? `<p class="ayuda">En el papel dice: <b>${esc(x.alumno)}</b> (${esc(String(x.grado || ''))}.° ${esc(x.grupo || '')}). Elígelo de la lista para ligarlo.</p>` : ''}
     <div class="rp-nums"><div class="campo"><label for="fi-fecha">Fecha</label><input id="fi-fecha" type="date" value="${x.fecha || hoyISO()}"></div>
       <div class="campo"><label for="fi-asig">Asignatura o taller</label><input id="fi-asig" value="${esc(x.asignatura || '')}"></div></div>
-    <div class="campo"><label for="fi-rep">Quién reporta</label><input id="fi-rep" value="${esc(x.reporta || '')}"></div>
+    <div class="rp-nums"><div class="campo"><label for="fi-cargo">Quién reporta: cargo</label><select id="fi-cargo">${CARGOS_PERS.map(c => `<option ${(x.cargoReporta || (x.reporta ? 'Docente' : 'Subdirección')) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
+      <div class="campo"><label for="fi-rep">Nombre</label><input id="fi-rep" list="fi-reps" value="${esc(x.reporta || '')}" placeholder="Nombre de quien vio lo que pasó"><datalist id="fi-reps">${nombresPersonal().map(n => `<option>${esc(n)}</option>`).join('')}</datalist></div></div>
+    <label class="check"><input type="checkbox" id="fi-inf" ${x.capturo ? 'checked' : ''}> Me lo informó de palabra y lo capturo yo (Subdirección)</label>
     <div class="campo"><label for="fi-hechos">Lo que pasó</label><textarea id="fi-hechos" rows="4">${esc(x.hechos || '')}</textarea></div>
     <fieldset class="campo" style="border:0;padding:0"><legend style="font-weight:700">Tipo de falta</legend>${TIPOS_INC.map(t => `<label class="check"><input type="checkbox" data-ti="${esc(t)}" ${(x.tipos || []).includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</fieldset>
     <label class="check"><input type="checkbox" id="fi-conf" ${i && esConf(x) ? 'checked' : ''}> 🔒 <b>Confidencial</b>: en lo que se comparte con los maestros sale el nombre del alumno, pero no lo que pasó (autolesiones, acoso, temas de salud o familiares).</label>
@@ -2779,7 +2787,7 @@ function formIncidencia(i, alVolver = null) {
     <div class="fila-btn"><button type="button" class="btn oro" id="fi-guardar">Guardar</button>${i ? '<button type="button" class="btn linea" id="fi-borrar">Eliminar</button>' : ''}</div>`);
   $('#fi-guardar').addEventListener('click', async e => {
     const curp = $('#fi-al').value, a = estado.alumnos.find(z => z.curp === curp);
-    const d = { ...x, curp: curp || null, fecha: $('#fi-fecha').value, asignatura: $('#fi-asig').value.trim(), reporta: $('#fi-rep').value.trim(), hechos: $('#fi-hechos').value.trim(),
+    const d = { ...x, curp: curp || null, fecha: $('#fi-fecha').value, asignatura: $('#fi-asig').value.trim(), reporta: $('#fi-rep').value.trim() || ($('#fi-cargo').value === 'Subdirección' ? (estado.config?.subdirector || 'Subdirección') : ''), cargoReporta: $('#fi-cargo').value, capturo: $('#fi-inf').checked ? 'Subdirección' : '', hechos: $('#fi-hechos').value.trim(),
       tipos: [...$('#modal-cuerpo').querySelectorAll('[data-ti]:checked')].map(c => c.dataset.ti), confidencial: $('#fi-conf').checked, revisar: curp ? false : !!x.revisar };
     if (a) { d.alumno = nombreCompleto(a); d.grado = a.grado; d.grupo = a.grupo; }
     if (!d.alumno || !d.fecha || !d.hechos) { $('#fi-err').textContent = 'Falta el alumno, la fecha o lo que pasó.'; return; }
@@ -2905,7 +2913,7 @@ function hojaSemanalInc() {
 const LEY_DOC = 'Este concentrado no incluye lo que pasó en cada reporte, para proteger la privacidad de los alumnos. El reporte completo de cada grupo se entrega únicamente a su tutor(a). Si usted necesita información de algún caso, acuda a la Subdirección.';
 const LEY_TUT = 'Uso exclusivo del tutor(a) de grupo. No se comparte en grupos de WhatsApp ni con alumnos o familias ajenas al caso. Los asuntos confidenciales se tratan personalmente con la Subdirección.';
 const gNomInc = g => `${g[0]}.° «${g.slice(1)}»`;
-const quienInc = i => [i.reporta, i.asignatura].filter(Boolean).join(', ') || '—';
+const quienInc = i => [i.reporta, i.cargoReporta && i.cargoReporta !== 'Docente' ? i.cargoReporta : '', i.asignatura].filter(Boolean).join(', ') || '—';
 function modeloInc(gsel, d, h) {
   const L = (incA.lista || []).filter(i => i.fecha >= d && i.fecha <= h && (gsel === 'todos' || grpInc(i) === gsel));
   const cuenta = A => ({ n: A.length, at: A.filter(i => estInc(i) === 'atendido').length, sg: A.filter(i => estInc(i) === 'seguimiento').length, ent: A.filter(enteradoInc).length, al: new Set(A.map(claveAl)).size });
@@ -3184,16 +3192,17 @@ const REGLA_BUZON = `    // Links personales de los maestros para reportar incid
 function bandejaInc(L) {
   const hoy = hoyISO();
   const nuevos = L.filter(i => (i.creadoISO || '').slice(0, 10) === hoy || i.fecha === hoy);
-  const porAsignar = L.filter(i => i.origen === 'maestro' && i.atiende !== 'maestro' && estInc(i) === 'pendiente' && !segBase(i).length);
+  const porAsignar = L.filter(i => i.origen === 'maestro' && i.atiende === 'subdireccion' && estInc(i) === 'pendiente' && !segBase(i).length);
+  const alTutor = L.filter(i => i.origen === 'maestro' && i.atiende === 'tutor' && estInc(i) === 'pendiente' && !segBase(i).length);
   const citas = L.filter(i => i.cita && i.cita.resultado !== 'asistio').sort((a, b) => (a.cita.fecha || '').localeCompare(b.cita.fecha || ''));
   const venc = citas.filter(i => !i.cita.resultado && i.cita.fecha < hoy);
   const graves = L.filter(i => i.gravedad === 'grave' && estInc(i) === 'pendiente');
-  if (!nuevos.length && !porAsignar.length && !citas.length && !graves.length) return '';
+  if (!nuevos.length && !porAsignar.length && !alTutor.length && !citas.length && !graves.length) return '';
   const mini = i => `<li><button type="button" class="enlace" data-inc-exp="${esc(claveAl(i))}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(nomInc(i))}</b></button> <small>· ${esc(grpInc(i).replace(/^(\d)/, '$1.° '))} · ${esc(i.reporta || '—')}${i.gravedad === 'grave' ? ' · <b style="color:var(--rojo)">grave</b>' : ''}</small></li>`;
   const miniCita = i => `<li><button type="button" class="enlace" data-inc-exp="${esc(claveAl(i))}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(nomInc(i))}</b></button> <small>· ${fTab(i.cita.fecha)} ${hora12(i.cita.hora)} · con ${esc(i.cita.con || '—')}${!i.cita.enviado ? ' · <b>falta citatorio</b>' : ''}${i.cita.resultado === 'noasistio' ? ' · <b style="color:var(--rojo)">no asistió</b>' : !i.cita.resultado && i.cita.fecha < hoy ? ' · <b style="color:var(--rojo)">vencida</b>' : ''}</small></li>`;
   const bloque = (t, A, f) => A.length ? `<div style="margin:.5rem 0"><h3 style="margin:0 0 .2rem;font-size:1.05rem">${t} (${A.length})</h3><ul style="margin:0;padding-left:1.2rem;line-height:1.6">${A.slice(0, 12).map(f).join('')}</ul></div>` : '';
   return `<div class="tarjeta" style="border-left:5px solid var(--oro)"><h2>Bandeja</h2>
-    ${bloque('⚠ Graves sin atender', graves, mini)}${bloque('🆕 Hoy', nuevos, mini)}${bloque('🤝 Para atender juntos con el maestro', porAsignar, mini)}
+    ${bloque('⚠ Graves sin atender', graves, mini)}${bloque('🆕 Hoy', nuevos, mini)}${bloque('🤝 Para atender juntos con el maestro', porAsignar, mini)}${bloque('👩‍🏫 Turnados al tutor del grupo (avísale)', alTutor, mini)}
     ${bloque('📅 Citas con la familia', citas, miniCita)}${venc.length ? `<p class="ayuda" style="color:var(--rojo)">${venc.length} cita${venc.length === 1 ? '' : 's'} ya pasaron de fecha y no tienen resultado.</p>` : ''}</div>`;
 }
 function textoCitatorio(i) {
@@ -3247,25 +3256,35 @@ function formCita(i, alVolver, resultado) {
 }
 // Links personales: uno por maestro (de la plantilla de maestros por grupo).
 async function linksMaestros() {
-  abrirModal('Links de los maestros', '<p class="cargando">Cargando…</p>');
+  abrirModal('Links del personal', '<p class="cargando">Cargando…</p>');
   let plant, links = [];
   try { plant = await cargarPlantilla(); const s = await getDocs(collection(db, 'buzon')); links = s.docs.map(d => ({ id: d.id, ...d.data() })); }
   catch (e) { console.error(e); $('#modal-cuerpo').innerHTML = `<p>Falta un permiso en las reglas de Firebase para los links de los maestros. Pega este bloque arriba de <b>// Todo lo demás, cerrado.</b> y publica:</p>
     <pre style="white-space:pre-wrap;background:#fff;border:1px solid var(--linea);border-radius:10px;padding:.7rem;font-size:.8rem">${esc(REGLA_BUZON)}</pre><div class="fila-btn"><button type="button" class="btn oro" id="lk-copiar">Copiar el bloque</button></div>`;
     $('#lk-copiar').addEventListener('click', async () => { try { await navigator.clipboard.writeText(REGLA_BUZON); aviso('Bloque copiado.'); } catch { prompt('Copia el bloque:', REGLA_BUZON); } }); return; }
-  const roster = {}; Object.entries(plant || {}).forEach(([g, ms]) => (ms || []).forEach(m => { const n = (m.docente || '').trim(); if (!n || /sin docente/i.test(n)) return; (roster[n] ||= new Set()).add(m.materia); }));
-  const nombres = Object.keys(roster).sort((a, b) => a.localeCompare(b, 'es'));
+  const roster = {}, cargo = {}; Object.entries(plant || {}).forEach(([g, ms]) => (ms || []).forEach(m => { const n = (m.docente || '').trim(); if (!n || /sin docente/i.test(n)) return; (roster[n] ||= new Set()).add(m.materia); cargo[n] = 'Docente'; }));
+  links.filter(l => l.activo && l.cargo && l.cargo !== 'Docente').forEach(l => { roster[l.maestro] ||= new Set(); cargo[l.maestro] = l.cargo; });
+  const extra = []; // personas agregadas en esta sesión que todavía no tienen link
+  let nombres = Object.keys(roster).sort((a, b) => (cargo[a] === 'Docente') - (cargo[b] === 'Docente') || a.localeCompare(b, 'es'));
+  incA.personal = Object.keys(roster);
   const activos = new Map(links.filter(l => l.activo).map(l => [l.maestro, l]));
   const snap = () => estado.alumnos.filter(a => a.estado === 'activo').sort((a, b) => `${a.grado}${a.grupo}`.localeCompare(`${b.grado}${b.grupo}`) || ordenAlumno(a, b)).map(a => ({ c: a.curp, n: nombreCompleto(a), g: `${a.grado}${a.grupo}` }));
   const url = t => new URL('reportar.html?t=' + t, location.href).href;
-  const msj = (n, t) => `Maestro(a) ${n}: este es su link personal para reportar incidencias de los alumnos. Desde ahí también puede agendar la cita con el papá y ver cómo se atiende cada reporte. Es solo para usted, no lo comparta:\n${url(t)}`;
+  const msj = (n, t) => cargo[n] && cargo[n] !== 'Docente' ? `${n}: este es su link personal para reportar incidencias de los alumnos (receso, entrada, salida, pasillos…). El reporte llega al momento a la Subdirección y puede ver cómo se atiende. Es solo para usted, no lo comparta:\n${url(t)}` : `Maestro(a) ${n}: este es su link personal para reportar incidencias de los alumnos. Desde ahí también puede agendar la cita con el papá y ver cómo se atiende cada reporte. Es solo para usted, no lo comparta:\n${url(t)}`;
   const pintar = () => {
     $('#modal-cuerpo').innerHTML = `<p class="ayuda">Cada maestro tiene su propio link: sus reportes llegan con su nombre. Mándaselo una vez por WhatsApp. Si alguien pierde el suyo o deja la escuela, desactívalo y genera otro.</p>
       <div class="fila-btn"><button type="button" class="btn oro" id="lk-todos">Generar los links que faltan (${nombres.filter(n => !activos.has(n)).length})</button><button type="button" class="btn linea" id="lk-act">Actualizar la lista de alumnos en los links</button></div>
       <p class="ayuda">Usa «Actualizar la lista de alumnos» cuando des de alta o de baja a un alumno.</p>
-      ${nombres.map(n => { const l = activos.get(n); return `<div class="rep-fila" style="display:block"><b>${esc(n)}</b> <small class="ayuda">· ${esc([...roster[n]].join(', '))}</small>
+      <div class="rep-fila" style="display:block;background:#F6EEDC"><b>Agregar otra persona</b> <small class="ayuda">(prefectura, trabajo social, administrativos, intendencia, Dirección…)</small>
+        <div class="rp-nums"><div class="campo"><label for="lk-nom">Nombre</label><input id="lk-nom" placeholder="Por ejemplo: Verónica Pérez"></div><div class="campo"><label for="lk-car">Cargo</label><select id="lk-car">${CARGOS_PERS.filter(c => c !== 'Docente').map(c => `<option>${c}</option>`).join('')}</select></div></div>
+        <div class="fila-btn" style="margin:0"><button type="button" class="btn oro chico" id="lk-add">Generar su link</button></div></div>
+      ${nombres.map(n => { const l = activos.get(n); return `<div class="rep-fila" style="display:block"><b>${esc(n)}</b> <small class="ayuda">· ${cargo[n] === 'Docente' ? esc([...roster[n]].join(', ')) : esc(cargo[n])}</small>
         <div class="fila-btn" style="margin-top:.3rem">${l ? `<a class="btn oro chico" href="https://wa.me/?text=${encodeURIComponent(msj(n, l.id))}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button type="button" class="btn linea chico" data-lk-cp="${l.id}">Copiar link</button><button type="button" class="btn linea chico" data-lk-off="${l.id}">Desactivar</button>` : `<button type="button" class="btn linea chico" data-lk-new="${esc(n)}">Generar link</button>`}</div></div>`; }).join('') || '<p>No hay maestros en la plantilla. Revisa «Maestros por grupo» en la pestaña de Reportes.</p>'}`;
-    const crear = async lista => { const lote = writeBatch(db), al = snap(); lista.forEach(n => { const t = nuevoToken(), d = { maestro: n, materias: [...roster[n]], activo: true, alumnos: al, creadoISO: new Date().toISOString() }; lote.set(doc(db, 'buzon', t), d); activos.set(n, { id: t, ...d }); }); await lote.commit(); bitacora('links de maestros generados', `${lista.length}`); };
+    const crear = async lista => { const lote = writeBatch(db), al = snap(); lista.forEach(n => { const t = nuevoToken(), d = { maestro: n, cargo: cargo[n] || 'Docente', materias: [...(roster[n] || [])], activo: true, alumnos: al, creadoISO: new Date().toISOString() }; lote.set(doc(db, 'buzon', t), d); activos.set(n, { id: t, ...d }); }); await lote.commit(); bitacora('links de maestros generados', `${lista.length}`); };
+    $('#lk-add').addEventListener('click', async e => { const n = $('#lk-nom').value.replace(/\s+/g, ' ').trim(); if (n.length < 3) { aviso('Escribe el nombre.', true); return; }
+      if (activos.has(n)) { aviso('Esa persona ya tiene link.', true); return; }
+      roster[n] = new Set(); cargo[n] = $('#lk-car').value; nombres = [n, ...nombres.filter(x => x !== n)]; e.target.disabled = true;
+      try { await crear([n]); aviso('Link generado. Ahora envíaselo.'); pintar(); } catch (x) { console.error(x); aviso('No se pudo generar.', true); e.target.disabled = false; } });
     $('#lk-todos').addEventListener('click', async e => { const f = nombres.filter(n => !activos.has(n)); if (!f.length) return; e.target.disabled = true; try { await crear(f); aviso(`${f.length} links generados.`); pintar(); } catch (x) { console.error(x); aviso('No se pudieron generar. Revisa las reglas.', true); e.target.disabled = false; } });
     $('#lk-act').addEventListener('click', async e => { e.target.disabled = true; try { const lote = writeBatch(db), al = snap(); activos.forEach(l => lote.update(doc(db, 'buzon', l.id), { alumnos: al })); await lote.commit(); aviso('Listas actualizadas.'); } catch (x) { console.error(x); aviso('No se pudo actualizar.', true); } e.target.disabled = false; });
     document.querySelectorAll('[data-lk-new]').forEach(b => b.addEventListener('click', async () => { try { await crear([b.dataset.lkNew]); pintar(); } catch (x) { console.error(x); aviso('No se pudo generar.', true); } }));
