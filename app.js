@@ -1,7 +1,7 @@
 /* Raíces y Estrellas · Plataforma docente · Entrega 3 (+ reporte de cumplimiento): acceso, panel directivo, calificación, tablero y reportes PDF */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, serverTimestamp, addDoc, query, where, Timestamp, increment, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, serverTimestamp, addDoc, query, where, collectionGroup, Timestamp, increment, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyB0IzYArTNquMl5-zphxdW9G4wcYmPgekA",
@@ -2640,7 +2640,18 @@ const cabEscuela = () => `<div class="rg-cab"><img src="logo-escuela.jpg" alt=""
 const ESTADOS_INC = { pendiente: 'Pendiente', seguimiento: 'En seguimiento', atendido: 'Atendido' };
 const estInc = i => ESTADOS_INC[i.estado] ? i.estado : 'pendiente';
 const estTxt = i => ESTADOS_INC[estInc(i)];
-const anotInc = i => Array.isArray(i.seg) ? i.seg : (i.acciones || i.atendidoPor || i.enterado) ? [{ fecha: i.fechaAtencion || i.fecha || '', quien: i.atendidoPor || '', que: i.acciones || '', enterado: i.enterado || '', docentes: true }] : [];
+const segBase = i => Array.isArray(i.seg) ? i.seg : (i.acciones || i.atendidoPor || i.enterado) ? [{ fecha: i.fechaAtencion || i.fecha || '', quien: i.atendidoPor || '', que: i.acciones || '', enterado: i.enterado || '', docentes: true }] : [];
+const RES_CITA = { asistio: 'asistió', noasistio: 'no asistió', reprogramada: 'se reprogramó' };
+const hora12 = h => { if (!h) return ''; const [H, M] = h.split(':').map(Number); return `${((H + 11) % 12) + 1}:${String(M).padStart(2, '0')} ${H < 12 ? 'a. m.' : 'p. m.'}`; };
+// La cita con la familia (del link del maestro o de la Subdirección) también cuenta como seguimiento.
+function citaAnots(i) {
+  const c = i.cita; if (!c) return [];
+  const out = (c.hist || []).map(h => ({ fecha: h.fecha, quien: c.con || '', que: `Cita con la familia${h.cita ? ` del ${fTab(h.cita)}` : ''}: ${RES_CITA[h.resultado] || ''}${h.acuerdos ? `. Acuerdos: ${h.acuerdos}` : ''}`, enterado: '', docentes: true }));
+  if (c.enviado) out.push({ fecha: c.enviado.slice(0, 10), quien: 'Escuela', que: `Citatorio enviado a la familia por WhatsApp para el ${fTab(c.fecha)} a las ${hora12(c.hora)}`, enterado: '', docentes: true });
+  return out;
+}
+const anotInc = i => [...segBase(i), ...citaAnots(i)].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+const refInc = i => i._ruta ? doc(db, i._ruta) : doc(db, 'incidencias', i.id);
 const enteradoInc = i => anotInc(i).some(a => a.enterado);
 // Lo que pueden ver los maestros: nunca de un confidencial y solo las anotaciones marcadas para ellos.
 const segDocentes = i => esConf(i) ? [] : anotInc(i).filter(a => a.docentes !== false && (a.que || a.enterado));
@@ -2669,21 +2680,32 @@ function errorInc(e) {
 }
 async function cargarIncidencias() {
   const s = await getDocs(collection(db, 'incidencias'));
-  incA.lista = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || nomInc(a).localeCompare(nomInc(b), 'es'));
+  let deMaestros = [];
+  try { const b = await getDocs(collectionGroup(db, 'inc')); deMaestros = b.docs.map(d => ({ id: d.id, _ruta: d.ref.path, ...d.data() })); incA.buzonOk = true; }
+  catch (e) { console.warn('Reportes del link de los maestros: falta la regla', e); incA.buzonOk = false; }
+  incA.lista = [...s.docs.map(d => ({ id: d.id, ...d.data() })), ...deMaestros].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || nomInc(a).localeCompare(nomInc(b), 'es'));
 }
 function chipsTipos(t) { return (t || []).map(x => `<span class="etiqueta" style="background:#EEE7F7;color:#4B2A7A">${esc(x)}</span>`).join(' '); }
 const colEst = { pendiente: 'pend', seguimiento: 'pend', atendido: 'ok' };
+function cajaCita(i) {
+  const c = i.cita; if (!c) return '';
+  const venc = !c.resultado && c.fecha && c.fecha < hoyISO();
+  return `<div style="margin:.4rem 0;padding:.45rem .6rem;border-radius:10px;background:${venc ? '#FBEDEC' : '#F1F5FB'}"><b>📅 Cita con la familia:</b> ${fCorta(c.fecha)}, ${hora12(c.hora)} · con ${esc(c.con || '—')}${c.motivo ? ` · ${esc(c.motivo)}` : ''}
+    <br><small>${c.enviado ? `📨 Citatorio enviado el ${fTab(c.enviado.slice(0, 10))}` : '<b>⏳ Falta enviar el citatorio</b>'}${c.resultado ? ` · <b>${RES_CITA[c.resultado]}</b>` : venc ? ' · <b style="color:var(--rojo)">la fecha ya pasó y no tiene resultado</b>' : ''}${(c.hist || []).filter(h => h.resultado === 'noasistio').length >= 2 ? ' · <b style="color:var(--rojo)">la familia no ha asistido dos veces: pasa a Subdirección</b>' : ''}</small>
+    <div class="fila-btn" style="margin-top:.3rem">${c.resultado === 'asistio' ? '' : `<button type="button" class="btn ${c.enviado ? 'linea' : 'oro'} chico" data-inc-cit="${i.id}">${c.enviado ? 'Reenviar citatorio' : 'Enviar citatorio'}</button>`}<button type="button" class="btn linea chico" data-inc-res="${i.id}">Resultado de la cita</button></div></div>`;
+}
 function botonesInc(i, exp = true) {
-  return `<div class="fila-btn" style="margin-top:.4rem"><button type="button" class="btn ${estInc(i) === 'atendido' ? 'linea' : 'oro'} chico" data-inc-at="${i.id}">Seguimiento</button><button type="button" class="btn linea chico" data-inc-ed="${i.id}">Editar</button>${exp ? `<button type="button" class="btn linea chico" data-inc-exp="${esc(claveAl(i))}">Expediente del alumno</button>` : ''}</div>`;
+  return `<div class="fila-btn" style="margin-top:.4rem">${i.cita ? '' : `<button type="button" class="btn linea chico" data-inc-nc="${i.id}">Citar a la familia</button>`}<button type="button" class="btn ${estInc(i) === 'atendido' ? 'linea' : 'oro'} chico" data-inc-at="${i.id}">Seguimiento</button><button type="button" class="btn linea chico" data-inc-ed="${i.id}">Editar</button>${exp ? `<button type="button" class="btn linea chico" data-inc-exp="${esc(claveAl(i))}">Expediente del alumno</button>` : ''}</div>`;
 }
 function filaInc(i, exp = true) {
   const S = anotInc(i), e = estInc(i);
   return `<div class="rep-fila" style="display:block">
-    <div style="display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap"><span><b>${esc(nomInc(i))}</b> <small>· ${esc(grpInc(i).replace(/^(\d)/, '$1.° '))} · ${fCorta(i.fecha)}</small>${i.revisar ? ' <span class="etiqueta" style="background:#FFF1C9;color:#5A4200">Por revisar</span>' : ''}${esConf(i) ? ' <span class="etiqueta" style="background:#F7D9D9;color:#7A1F1F">🔒 Confidencial</span>' : ''}</span>
+    <div style="display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap"><span><b>${esc(nomInc(i))}</b> <small>· ${esc(grpInc(i).replace(/^(\d)/, '$1.° '))} · ${fCorta(i.fecha)}</small>${i.revisar ? ' <span class="etiqueta" style="background:#FFF1C9;color:#5A4200">Por revisar</span>' : ''}${esConf(i) ? ' <span class="etiqueta" style="background:#F7D9D9;color:#7A1F1F">🔒 Confidencial</span>' : ''}${i.gravedad === 'grave' ? ' <span class="etiqueta" style="background:#B42318;color:#fff">⚠ Grave</span>' : ''}${i.origen === 'maestro' ? ' <span class="etiqueta" style="background:#E3ECF8;color:#1F3E6E">📲 Del link</span>' : ''}</span>
       <span class="envio ${colEst[e]}"${e === 'seguimiento' ? ' style="background:#E3ECF8;color:#1F3E6E"' : ''}>${estTxt(i)}</span></div>
     <div style="margin:.3rem 0">${chipsTipos(i.tipos)}</div>
     <p style="margin:.2rem 0">${esc(i.hechos || '')}</p>
-    <small class="ayuda">Reporta: ${esc(i.reporta || '—')}${i.asignatura ? ` · ${esc(i.asignatura)}` : ''}</small>
+    <small class="ayuda">Reporta: ${esc(i.reporta || '—')}${i.asignatura ? ` · ${esc(i.asignatura)}` : ''}${i.hora ? ` · ${hora12(i.hora)}` : ''}${i.origen === 'maestro' ? ` · ${i.atiende === 'maestro' ? 'Lo atiende el maestro' : 'Lo pasa a la Subdirección'}` : ''}</small>
+    ${cajaCita(i)}
     ${S.length ? `<ul style="margin:.35rem 0 0;padding-left:1.1rem;font-size:.92rem">${S.map(a => `<li>${esc(anotTxt(a))}${a.docentes === false ? ' <small class="ayuda">(solo Subdirección)</small>' : ''}</li>`).join('')}</ul>` : ''}
     ${botonesInc(i, exp)}</div>`;
 }
@@ -2700,11 +2722,12 @@ function tabIncidencias() {
   <div class="tarjeta"><h2>Incidencias</h2>
     <p class="ayuda">Reportes de conducta de los alumnos. Mándale a Claude las fotos de los reportes en papel; él te entrega un archivo que subes aquí con «Importar».</p>
     <div class="resumen"><div><b>${L.length}</b>reportes</div><div><b>${pend}</b>pendientes</div><div><b>${segN}</b>en seguimiento</div><div><b>${L.length - pend - segN}</b>atendidos</div><div><b>${Object.keys(porAl).length}</b>alumnos</div></div>
-    <div class="fila-btn"><button type="button" class="btn oro" id="inc-nueva">Registrar incidencia</button><button type="button" class="btn linea" id="inc-imp">Importar archivo de Claude</button><input type="file" id="inc-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="inc-semana">Hoja semanal por grupo</button><button type="button" class="btn linea" id="inc-conc">Concentrado para docentes</button><button type="button" class="btn linea" id="inc-dir">📇 Directorio de papás</button></div></div>
+    <div class="fila-btn"><button type="button" class="btn oro" id="inc-nueva">Registrar incidencia</button><button type="button" class="btn linea" id="inc-imp">Importar archivo de Claude</button><input type="file" id="inc-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="inc-semana">Hoja semanal por grupo</button><button type="button" class="btn linea" id="inc-conc">Concentrado para docentes</button><button type="button" class="btn linea" id="inc-dir">📇 Directorio de papás</button><button type="button" class="btn linea" id="inc-links">🔗 Links de los maestros</button></div></div>
+  ${bandejaInc(L)}
   <div class="grupos" role="group" aria-label="Grupos"><button type="button" class="grupo" data-ig="todos" aria-pressed="${incA.grupo === 'todos'}"><b>Todos</b><span>${L.length}</span></button>
     ${LISTA_GRUPOS.map(x => `<button type="button" class="grupo g${x.grado}" data-ig="${x.id}" aria-pressed="${incA.grupo === x.id}"><b>${x.grado}.° ${x.grupo}</b><span>${(n => `${n} reporte${n === 1 ? '' : 's'}`)(L.filter(i => grpInc(i) === x.id).length)}</span></button>`).join('')}</div>
   <div class="tarjeta"><h2>Los más reportados${incA.grupo === 'todos' ? '' : ` · ${incA.grupo[0]}.° ${incA.grupo.slice(1)}`}</h2>
-    ${top.length ? `<ol style="margin:0;padding-left:1.3rem;line-height:1.7">${top.map(t => `<li><button type="button" class="enlace" data-inc-exp="${esc(t.k)}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(t.nom)}</b></button> <small>· ${esc(t.g.replace(/^(\d)/, '$1.° '))} · ${t.n} reporte${t.n === 1 ? '' : 's'}${t.pend ? ` · <b style="color:var(--rojo)">${t.pend} sin cerrar</b>` : ''} · último: ${fCorta(t.ult)}</small></li>`).join('')}</ol>` : '<p class="vacio">Sin reportes todavía.</p>'}</div>
+    ${top.length ? `<ol style="margin:0;padding-left:1.3rem;line-height:1.7">${top.map(t => `<li><button type="button" class="enlace" data-inc-exp="${esc(t.k)}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(t.nom)}</b></button> <small>· ${esc(t.g.replace(/^(\d)/, '$1.° '))} · ${t.n} reporte${t.n === 1 ? '' : 's'}${t.pend ? ` · <b style="color:var(--rojo)">${t.pend} sin cerrar</b>` : ''} · último: ${fCorta(t.ult)}${t.n >= 5 ? ' · <b style="color:var(--rojo)">quinto reporte o más: acta y canalización</b>' : t.n >= 3 ? ' · <b style="color:#8A5A00">tercer reporte: cita con la familia</b>' : ''}</small></li>`).join('')}</ol>` : '<p class="vacio">Sin reportes todavía.</p>'}</div>
   <div class="barra-acciones"><input id="inc-q" class="buscar" type="search" placeholder="Buscar alumno, maestro o hecho" value="${esc(incA.q)}">
     <select id="inc-est"><option value="todos">Todos</option>${Object.entries(ESTADOS_INC).map(([k, v]) => `<option value="${k}" ${incA.est === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
   <div class="tarjeta">${vis.length ? vis.map(filaInc).join('') : '<p class="vacio">No hay reportes con este filtro.</p>'}</div>`;
@@ -2717,6 +2740,7 @@ function tabIncidencias() {
   $('#inc-semana').addEventListener('click', hojaSemanalInc);
   $('#inc-conc').addEventListener('click', concentradoInc);
   $('#inc-dir').addEventListener('click', () => tabDirectorio());
+  $('#inc-links').addEventListener('click', () => linksMaestros());
   ligarBotonesInc(p);
 }
 function ligarBotonesInc(cont, alVolver = null) {
@@ -2724,6 +2748,9 @@ function ligarBotonesInc(cont, alVolver = null) {
   cont.querySelectorAll('[data-inc-at]').forEach(b => b.addEventListener('click', () => formAtencion(L.find(i => i.id === b.dataset.incAt), alVolver)));
   cont.querySelectorAll('[data-inc-ed]').forEach(b => b.addEventListener('click', () => formIncidencia(L.find(i => i.id === b.dataset.incEd), alVolver)));
   cont.querySelectorAll('[data-inc-exp]').forEach(b => b.addEventListener('click', () => expedienteInc(b.dataset.incExp)));
+  cont.querySelectorAll('[data-inc-cit]').forEach(b => b.addEventListener('click', () => enviarCitatorio(L.find(i => i.id === b.dataset.incCit), alVolver)));
+  cont.querySelectorAll('[data-inc-res]').forEach(b => b.addEventListener('click', () => formCita(L.find(i => i.id === b.dataset.incRes), alVolver, true)));
+  cont.querySelectorAll('[data-inc-nc]').forEach(b => b.addEventListener('click', () => formCita(L.find(i => i.id === b.dataset.incNc), alVolver, false)));
 }
 // Después de guardar: recarga la lista y vuelve a donde estaba (la pestaña o el expediente abierto).
 async function trasGuardarInc(alVolver) {
@@ -2757,14 +2784,14 @@ function formIncidencia(i, alVolver = null) {
     if (a) { d.alumno = nombreCompleto(a); d.grado = a.grado; d.grupo = a.grupo; }
     if (!d.alumno || !d.fecha || !d.hechos) { $('#fi-err').textContent = 'Falta el alumno, la fecha o lo que pasó.'; return; }
     delete d.id; e.target.disabled = true;
-    try { if (i) await setDoc(doc(db, 'incidencias', i.id), d); else { d.creadoISO = new Date().toISOString(); d.origen = 'manual'; await addDoc(collection(db, 'incidencias'), d); }
+    try { delete d._ruta; if (i) await setDoc(refInc(i), d); else { d.creadoISO = new Date().toISOString(); d.origen = 'manual'; await addDoc(collection(db, 'incidencias'), d); }
       bitacora(i ? 'incidencia editada' : 'incidencia registrada', d.alumno); cerrarModal(); await trasGuardarInc(alVolver); aviso('Guardado.'); }
     catch (er) { e.target.disabled = false; cerrarModal(); errorInc(er); }
   });
-  $('#fi-borrar')?.addEventListener('click', async () => { if (!confirm('¿Eliminar este reporte? No se puede deshacer.')) return; try { await deleteDoc(doc(db, 'incidencias', i.id)); bitacora('incidencia eliminada', x.alumno); cerrarModal(); incA.lista = null; tabIncidencias(); } catch (er) { cerrarModal(); errorInc(er); } });
+  $('#fi-borrar')?.addEventListener('click', async () => { if (!confirm('¿Eliminar este reporte? No se puede deshacer.')) return; try { await deleteDoc(refInc(i)); bitacora('incidencia eliminada', x.alumno); cerrarModal(); incA.lista = null; tabIncidencias(); } catch (er) { cerrarModal(); errorInc(er); } });
 }
 function formAtencion(i, alVolver = null) {
-  const g = grpInc(i), S = anotInc(i).map(a => ({ ...a }));
+  const g = grpInc(i), S = segBase(i).map(a => ({ ...a }));
   const pintar = () => {
     $('#modal-cuerpo').innerHTML = `<p><b>${esc(nomInc(i))}</b> · ${fCorta(i.fecha)}${esConf(i) ? ' · 🔒 confidencial' : ''}<br><small>${esc(i.hechos || '')}</small></p>
     <h3 style="margin:.6rem 0 .3rem">Historial de seguimiento</h3>
@@ -2788,7 +2815,7 @@ function formAtencion(i, alVolver = null) {
       const ult = seg[seg.length - 1] || {};
       e.target.disabled = true;
       try {
-        await updateDoc(doc(db, 'incidencias', i.id), { estado: est, seg, atendidoPor: ult.quien || '', fechaAtencion: ult.fecha || '', acciones: seg.map(a => a.que).filter(Boolean).join(' / '), enterado: seg.map(a => a.enterado).filter(Boolean).join(' / ') });
+        await updateDoc(refInc(i), { estado: est, seg, atendidoPor: ult.quien || '', fechaAtencion: ult.fecha || '', acciones: seg.map(a => a.que).filter(Boolean).join(' / '), enterado: seg.map(a => a.enterado).filter(Boolean).join(' / ') });
         bitacora('seguimiento de incidencia', `${nomInc(i)}: ${ESTADOS_INC[est]}`); cerrarModal(); await trasGuardarInc(alVolver); aviso('Seguimiento guardado.');
       } catch (er) { cerrarModal(); errorInc(er); }
     });
@@ -3131,4 +3158,120 @@ function hojaContactos() {
     }).join('');
     cerrarModal(); if (!hojas) { aviso('Todos los alumnos de ese grupo ya tienen teléfono.'); return; } imprimir(hojas);
   });
+}
+
+/* ======================================================================
+   BANDEJA, CITAS Y LINKS DE LOS MAESTROS
+   Los maestros reportan con su link personal (reportar.html?t=CLAVE); los reportes quedan en
+   buzon/CLAVE/inc y aquí se leen junto con los demás. La cita con la familia la envía la escuela.
+   ====================================================================== */
+const REGLA_BUZON = `    // Links personales de los maestros para reportar incidencias.
+    match /buzon/{token} {
+      allow get: if esDirectivo() || resource.data.activo == true;
+      allow list, write: if esDirectivo();
+      match /inc/{id} {
+        allow read: if esDirectivo() || get(/databases/$(database)/documents/buzon/$(token)).data.activo == true;
+        allow create: if get(/databases/$(database)/documents/buzon/$(token)).data.activo == true
+          && request.resource.data.token == token && request.resource.data.origen == 'maestro';
+        allow update: if esDirectivo() || (get(/databases/$(database)/documents/buzon/$(token)).data.activo == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cita', 'actualizado']));
+        allow delete: if esDirectivo();
+      }
+    }
+    match /{ruta=**}/inc/{id} {
+      allow read: if esDirectivo();
+    }`;
+function bandejaInc(L) {
+  const hoy = hoyISO();
+  const nuevos = L.filter(i => (i.creadoISO || '').slice(0, 10) === hoy || i.fecha === hoy);
+  const porAsignar = L.filter(i => i.origen === 'maestro' && i.atiende !== 'maestro' && estInc(i) === 'pendiente' && !segBase(i).length);
+  const citas = L.filter(i => i.cita && i.cita.resultado !== 'asistio').sort((a, b) => (a.cita.fecha || '').localeCompare(b.cita.fecha || ''));
+  const venc = citas.filter(i => !i.cita.resultado && i.cita.fecha < hoy);
+  const graves = L.filter(i => i.gravedad === 'grave' && estInc(i) === 'pendiente');
+  if (!nuevos.length && !porAsignar.length && !citas.length && !graves.length) return '';
+  const mini = i => `<li><button type="button" class="enlace" data-inc-exp="${esc(claveAl(i))}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(nomInc(i))}</b></button> <small>· ${esc(grpInc(i).replace(/^(\d)/, '$1.° '))} · ${esc(i.reporta || '—')}${i.gravedad === 'grave' ? ' · <b style="color:var(--rojo)">grave</b>' : ''}</small></li>`;
+  const miniCita = i => `<li><button type="button" class="enlace" data-inc-exp="${esc(claveAl(i))}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(nomInc(i))}</b></button> <small>· ${fTab(i.cita.fecha)} ${hora12(i.cita.hora)} · con ${esc(i.cita.con || '—')}${!i.cita.enviado ? ' · <b>falta citatorio</b>' : ''}${i.cita.resultado === 'noasistio' ? ' · <b style="color:var(--rojo)">no asistió</b>' : !i.cita.resultado && i.cita.fecha < hoy ? ' · <b style="color:var(--rojo)">vencida</b>' : ''}</small></li>`;
+  const bloque = (t, A, f) => A.length ? `<div style="margin:.5rem 0"><h3 style="margin:0 0 .2rem;font-size:1.05rem">${t} (${A.length})</h3><ul style="margin:0;padding-left:1.2rem;line-height:1.6">${A.slice(0, 12).map(f).join('')}</ul></div>` : '';
+  return `<div class="tarjeta" style="border-left:5px solid var(--oro)"><h2>Bandeja</h2>
+    ${bloque('⚠ Graves sin atender', graves, mini)}${bloque('🆕 Hoy', nuevos, mini)}${bloque('📥 Por asignar (los pasaron a la Subdirección)', porAsignar, mini)}
+    ${bloque('📅 Citas con la familia', citas, miniCita)}${venc.length ? `<p class="ayuda" style="color:var(--rojo)">${venc.length} cita${venc.length === 1 ? '' : 's'} ya pasaron de fecha y no tienen resultado.</p>` : ''}</div>`;
+}
+function textoCitatorio(i) {
+  const c = i.cita, cf = estado.config || {}, cont = i.curp ? contA.mapa?.[i.curp] : null;
+  return `*Escuela Secundaria Técnica N.° 17 · Turno Vespertino*\n\n${cont?.tutor ? `Estimado(a) ${cont.tutor}:` : 'Estimado padre, madre o tutor:'}\n\nPor medio del presente, se le cita para tratar asuntos relacionados con su hijo(a) *${titulo(nomInc(i))}*, de ${grpInc(i).replace(/^(\d)/, '$1.° ')}.\n\n📅 *Día:* ${fechaLarga(fISO(c.fecha))}\n🕐 *Hora:* ${hora12(c.hora)}\n👤 *Le atiende:* ${c.con || 'Subdirección'}${c.motivo ? `\n📝 *Motivo:* ${c.motivo}` : ''}\n\nLe pedimos su puntual asistencia. Si no le es posible acudir, por favor responda este mensaje para acordar otra fecha.\n\nAtentamente,\n${cf.subdirector || 'Subdirección'}\n${cf.cargoSubdirector || 'Subdirector del Turno Vespertino'}`;
+}
+async function enviarCitatorio(i, alVolver) {
+  if (!i?.cita) return;
+  if (!contA.mapa) { try { await cargarContactos(); } catch { contA.mapa = {}; } }
+  const cont = i.curp ? contA.mapa[i.curp] : null, txt = textoCitatorio(i);
+  abrirModal('Enviar citatorio', `<p>Se abrirá WhatsApp con el citatorio ya escrito${telOk(cont) ? ` para <b>${esc(cont.tutor || 'la familia')}</b> al <b>${fmtTel(cont.tel)}</b>` : '. <b>Este alumno no tiene teléfono en el directorio</b>: elige el contacto en WhatsApp'}.</p>
+    <pre style="white-space:pre-wrap;background:#fff;border:1px solid var(--linea);border-radius:10px;padding:.7rem;font:inherit;font-size:.9rem">${esc(txt)}</pre>
+    <p class="ayuda">Al tocar el botón queda registrado que la escuela envió el citatorio (fecha y hora), como evidencia.</p>
+    <div class="fila-btn"><button type="button" class="btn oro" id="ci-env">Abrir WhatsApp y registrar envío</button>${i.curp ? '<button type="button" class="btn linea" id="ci-tel">Editar teléfono</button>' : ''}</div>`);
+  $('#ci-tel')?.addEventListener('click', () => formContacto(i.curp, () => enviarCitatorio(i, alVolver)));
+  $('#ci-env').addEventListener('click', async () => {
+    open(telOk(cont) ? waTel(cont.tel, txt) : 'https://wa.me/?text=' + encodeURIComponent(txt), '_blank', 'noopener');
+    try { await updateDoc(refInc(i), { cita: { ...i.cita, enviado: new Date().toISOString() } }); bitacora('citatorio enviado', nomInc(i)); cerrarModal(); await trasGuardarInc(alVolver); aviso('Citatorio registrado.'); }
+    catch (e) { cerrarModal(); errorInc(e); }
+  });
+}
+// Nueva cita (desde la Subdirección) o resultado de la cita.
+function formCita(i, alVolver, resultado) {
+  const c = i.cita || {}, g = grpInc(i);
+  abrirModal(resultado ? 'Resultado de la cita' : 'Citar a la familia', `<p><b>${esc(nomInc(i))}</b> · ${esc(g.replace(/^(\d)/, '$1.° '))}</p>
+    ${resultado ? `<p>Cita del ${fCorta(c.fecha)}, ${hora12(c.hora)}, con ${esc(c.con || '—')}.</p>
+      <div class="campo"><label for="fr-r">¿Cómo fue?</label><select id="fr-r"><option value="asistio">Asistió</option><option value="noasistio">No asistió</option><option value="reprogramada">Se reprogramó</option></select></div>
+      <div class="campo" id="fr-acw"><label for="fr-ac">Acuerdos</label><textarea id="fr-ac" rows="3" placeholder="Por ejemplo: la mamá revisará la libreta diario; nos vemos en dos semanas."></textarea></div>` : ''}
+    <div id="fr-nueva" ${resultado ? 'hidden' : ''}><div class="rp-nums"><div class="campo"><label for="fr-f">${resultado ? 'Nuevo día' : 'Día'}</label><input id="fr-f" type="date" value="${resultado ? '' : hoyISO()}"></div><div class="campo"><label for="fr-h">Hora</label><input id="fr-h" type="time" value="${c.hora || ''}"></div></div>
+      ${resultado ? '' : `<div class="campo"><label for="fr-con">Le atiende</label><input id="fr-con" value="${esc(c.con || 'Subdirección')}"></div><div class="campo"><label for="fr-m">Motivo</label><input id="fr-m" value="${esc(c.motivo || '')}" placeholder="Por ejemplo: platicar sobre su conducta y acordar apoyos"></div>`}</div>
+    <p id="fr-err" class="error" role="alert"></p><div class="fila-btn"><button type="button" class="btn oro" id="fr-ok">Guardar</button></div>`);
+  if (resultado) $('#fr-r').addEventListener('change', e => { $('#fr-acw').hidden = e.target.value !== 'asistio'; $('#fr-nueva').hidden = e.target.value === 'asistio'; });
+  $('#fr-ok').addEventListener('click', async ev => {
+    const err = $('#fr-err'); let cita, extra = {};
+    if (!resultado) {
+      if (!$('#fr-f').value || !$('#fr-h').value) { err.textContent = 'Pon el día y la hora.'; return; }
+      cita = { fecha: $('#fr-f').value, hora: $('#fr-h').value, con: $('#fr-con').value.trim(), motivo: $('#fr-m').value.trim(), enviado: '', resultado: '', acuerdos: '', hist: [] };
+      if (estInc(i) === 'pendiente') extra.estado = 'seguimiento';
+    } else {
+      const r = $('#fr-r').value, hist = [...(c.hist || [])];
+      if (r === 'asistio') { const ac = $('#fr-ac').value.trim(); if (!ac) { err.textContent = 'Escribe los acuerdos.'; return; }
+        cita = { ...c, resultado: 'asistio', acuerdos: ac, hist: [...hist, { fecha: hoyISO(), resultado: 'asistio', acuerdos: ac, cita: c.fecha }] }; }
+      else { const nf = $('#fr-f').value; if (r === 'reprogramada' && !nf) { err.textContent = 'Pon el nuevo día.'; return; }
+        hist.push({ fecha: hoyISO(), resultado: r, cita: c.fecha });
+        cita = nf ? { ...c, fecha: nf, hora: $('#fr-h').value || c.hora, resultado: '', enviado: '', acuerdos: '', hist } : { ...c, resultado: r, hist }; }
+    }
+    ev.target.disabled = true;
+    try { await updateDoc(refInc(i), { cita, ...extra }); bitacora(resultado ? 'resultado de cita' : 'cita con la familia', nomInc(i)); cerrarModal(); await trasGuardarInc(alVolver); aviso(resultado ? 'Resultado guardado. Si ya quedó resuelto, márcalo como atendido en «Seguimiento».' : 'Cita guardada. Ahora envía el citatorio.'); }
+    catch (e) { cerrarModal(); errorInc(e); }
+  });
+}
+// Links personales: uno por maestro (de la plantilla de maestros por grupo).
+async function linksMaestros() {
+  abrirModal('Links de los maestros', '<p class="cargando">Cargando…</p>');
+  let plant, links = [];
+  try { plant = await cargarPlantilla(); const s = await getDocs(collection(db, 'buzon')); links = s.docs.map(d => ({ id: d.id, ...d.data() })); }
+  catch (e) { console.error(e); $('#modal-cuerpo').innerHTML = `<p>Falta un permiso en las reglas de Firebase para los links de los maestros. Pega este bloque arriba de <b>// Todo lo demás, cerrado.</b> y publica:</p>
+    <pre style="white-space:pre-wrap;background:#fff;border:1px solid var(--linea);border-radius:10px;padding:.7rem;font-size:.8rem">${esc(REGLA_BUZON)}</pre><div class="fila-btn"><button type="button" class="btn oro" id="lk-copiar">Copiar el bloque</button></div>`;
+    $('#lk-copiar').addEventListener('click', async () => { try { await navigator.clipboard.writeText(REGLA_BUZON); aviso('Bloque copiado.'); } catch { prompt('Copia el bloque:', REGLA_BUZON); } }); return; }
+  const roster = {}; Object.entries(plant || {}).forEach(([g, ms]) => (ms || []).forEach(m => { const n = (m.docente || '').trim(); if (!n || /sin docente/i.test(n)) return; (roster[n] ||= new Set()).add(m.materia); }));
+  const nombres = Object.keys(roster).sort((a, b) => a.localeCompare(b, 'es'));
+  const activos = new Map(links.filter(l => l.activo).map(l => [l.maestro, l]));
+  const snap = () => estado.alumnos.filter(a => a.estado === 'activo').sort((a, b) => `${a.grado}${a.grupo}`.localeCompare(`${b.grado}${b.grupo}`) || ordenAlumno(a, b)).map(a => ({ c: a.curp, n: nombreCompleto(a), g: `${a.grado}${a.grupo}` }));
+  const url = t => new URL('reportar.html?t=' + t, location.href).href;
+  const msj = (n, t) => `Maestro(a) ${n}: este es su link personal para reportar incidencias de los alumnos. Desde ahí también puede agendar la cita con el papá y ver cómo se atiende cada reporte. Es solo para usted, no lo comparta:\n${url(t)}`;
+  const pintar = () => {
+    $('#modal-cuerpo').innerHTML = `<p class="ayuda">Cada maestro tiene su propio link: sus reportes llegan con su nombre. Mándaselo una vez por WhatsApp. Si alguien pierde el suyo o deja la escuela, desactívalo y genera otro.</p>
+      <div class="fila-btn"><button type="button" class="btn oro" id="lk-todos">Generar los links que faltan (${nombres.filter(n => !activos.has(n)).length})</button><button type="button" class="btn linea" id="lk-act">Actualizar la lista de alumnos en los links</button></div>
+      <p class="ayuda">Usa «Actualizar la lista de alumnos» cuando des de alta o de baja a un alumno.</p>
+      ${nombres.map(n => { const l = activos.get(n); return `<div class="rep-fila" style="display:block"><b>${esc(n)}</b> <small class="ayuda">· ${esc([...roster[n]].join(', '))}</small>
+        <div class="fila-btn" style="margin-top:.3rem">${l ? `<a class="btn oro chico" href="https://wa.me/?text=${encodeURIComponent(msj(n, l.id))}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button type="button" class="btn linea chico" data-lk-cp="${l.id}">Copiar link</button><button type="button" class="btn linea chico" data-lk-off="${l.id}">Desactivar</button>` : `<button type="button" class="btn linea chico" data-lk-new="${esc(n)}">Generar link</button>`}</div></div>`; }).join('') || '<p>No hay maestros en la plantilla. Revisa «Maestros por grupo» en la pestaña de Reportes.</p>'}`;
+    const crear = async lista => { const lote = writeBatch(db), al = snap(); lista.forEach(n => { const t = nuevoToken(), d = { maestro: n, materias: [...roster[n]], activo: true, alumnos: al, creadoISO: new Date().toISOString() }; lote.set(doc(db, 'buzon', t), d); activos.set(n, { id: t, ...d }); }); await lote.commit(); bitacora('links de maestros generados', `${lista.length}`); };
+    $('#lk-todos').addEventListener('click', async e => { const f = nombres.filter(n => !activos.has(n)); if (!f.length) return; e.target.disabled = true; try { await crear(f); aviso(`${f.length} links generados.`); pintar(); } catch (x) { console.error(x); aviso('No se pudieron generar. Revisa las reglas.', true); e.target.disabled = false; } });
+    $('#lk-act').addEventListener('click', async e => { e.target.disabled = true; try { const lote = writeBatch(db), al = snap(); activos.forEach(l => lote.update(doc(db, 'buzon', l.id), { alumnos: al })); await lote.commit(); aviso('Listas actualizadas.'); } catch (x) { console.error(x); aviso('No se pudo actualizar.', true); } e.target.disabled = false; });
+    document.querySelectorAll('[data-lk-new]').forEach(b => b.addEventListener('click', async () => { try { await crear([b.dataset.lkNew]); pintar(); } catch (x) { console.error(x); aviso('No se pudo generar.', true); } }));
+    document.querySelectorAll('[data-lk-cp]').forEach(b => b.addEventListener('click', async () => { try { await navigator.clipboard.writeText(url(b.dataset.lkCp)); aviso('Link copiado.'); } catch { prompt('Copia el link:', url(b.dataset.lkCp)); } }));
+    document.querySelectorAll('[data-lk-off]').forEach(b => b.addEventListener('click', async () => { if (!confirm('¿Desactivar este link? El maestro ya no podrá usarlo; sus reportes anteriores se conservan.')) return;
+      try { await updateDoc(doc(db, 'buzon', b.dataset.lkOff), { activo: false }); [...activos].forEach(([n, l]) => { if (l.id === b.dataset.lkOff) activos.delete(n); }); pintar(); } catch (x) { console.error(x); aviso('No se pudo desactivar.', true); } }));
+  };
+  pintar();
 }
