@@ -2700,7 +2700,7 @@ function tabIncidencias() {
   <div class="tarjeta"><h2>Incidencias</h2>
     <p class="ayuda">Reportes de conducta de los alumnos. Mándale a Claude las fotos de los reportes en papel; él te entrega un archivo que subes aquí con «Importar».</p>
     <div class="resumen"><div><b>${L.length}</b>reportes</div><div><b>${pend}</b>pendientes</div><div><b>${segN}</b>en seguimiento</div><div><b>${L.length - pend - segN}</b>atendidos</div><div><b>${Object.keys(porAl).length}</b>alumnos</div></div>
-    <div class="fila-btn"><button type="button" class="btn oro" id="inc-nueva">Registrar incidencia</button><button type="button" class="btn linea" id="inc-imp">Importar archivo de Claude</button><input type="file" id="inc-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="inc-semana">Hoja semanal por grupo</button><button type="button" class="btn linea" id="inc-conc">Concentrado para docentes</button></div></div>
+    <div class="fila-btn"><button type="button" class="btn oro" id="inc-nueva">Registrar incidencia</button><button type="button" class="btn linea" id="inc-imp">Importar archivo de Claude</button><input type="file" id="inc-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="inc-semana">Hoja semanal por grupo</button><button type="button" class="btn linea" id="inc-conc">Concentrado para docentes</button><button type="button" class="btn linea" id="inc-dir">📇 Directorio de papás</button></div></div>
   <div class="grupos" role="group" aria-label="Grupos"><button type="button" class="grupo" data-ig="todos" aria-pressed="${incA.grupo === 'todos'}"><b>Todos</b><span>${L.length}</span></button>
     ${LISTA_GRUPOS.map(x => `<button type="button" class="grupo g${x.grado}" data-ig="${x.id}" aria-pressed="${incA.grupo === x.id}"><b>${x.grado}.° ${x.grupo}</b><span>${(n => `${n} reporte${n === 1 ? '' : 's'}`)(L.filter(i => grpInc(i) === x.id).length)}</span></button>`).join('')}</div>
   <div class="tarjeta"><h2>Los más reportados${incA.grupo === 'todos' ? '' : ` · ${incA.grupo[0]}.° ${incA.grupo.slice(1)}`}</h2>
@@ -2716,6 +2716,7 @@ function tabIncidencias() {
   $('#inc-arch').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarIncidencias(f); });
   $('#inc-semana').addEventListener('click', hojaSemanalInc);
   $('#inc-conc').addEventListener('click', concentradoInc);
+  $('#inc-dir').addEventListener('click', () => tabDirectorio());
   ligarBotonesInc(p);
 }
 function ligarBotonesInc(cont, alVolver = null) {
@@ -2841,9 +2842,13 @@ function expedienteInc(k) {
     <p style="font-size:.92em">${Object.entries(porTipo).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${esc(t)}: ${n}`).join(' · ')}</p>`;
   const tabla = `<table><thead><tr><th>Fecha</th><th>Reporta</th><th>Lo que pasó</th><th>Seguimiento</th></tr></thead>
     <tbody>${L.map(i => `<tr><td>${fTab(i.fecha)}</td><td class="izq">${esc(i.reporta || '—')}${i.asignatura ? `<br><i>${esc(i.asignatura)}</i>` : ''}</td><td class="izq">${esc(i.hechos || '')}${esConf(i) ? ' <i>(confidencial)</i>' : ''}</td><td class="izq">${segInc(i)}</td></tr>`).join('')}</tbody></table>`;
-  abrirModal('Expediente de incidencias', `${cab}<div id="exp-lista">${L.map(i => filaInc(i, false)).join('')}</div>
+  const cAl = i0.curp ? contA.mapa?.[i0.curp] : null;
+  const cajaCont = i0.curp ? `<div class="rep-fila" style="display:block;background:#F6EEDC"><b>📇 Contacto de la familia:</b> ${cAl && cAl.tel ? `${esc(cAl.tutor || '—')}${cAl.parentesco ? ` (${esc(cAl.parentesco)})` : ''} · <a href="${waTel(cAl.tel)}" target="_blank" rel="noopener">${fmtTel(cAl.tel)}</a>${cAl.tel2 ? ` · ${fmtTel(cAl.tel2)}` : ''}${cAl.malo ? ' · <b style="color:var(--rojo)">número equivocado</b>' : ''}` : '<span style="color:var(--rojo)">sin teléfono registrado</span>'} <button type="button" class="btn linea chico" id="exp-cont">Editar contacto</button></div>` : '';
+  abrirModal('Expediente de incidencias', `${cab}${cajaCont}<div id="exp-lista">${L.map(i => filaInc(i, false)).join('')}</div>
     <div class="fila-btn" style="margin-top:.8rem"><button type="button" class="btn oro" id="exp-imp">Imprimir (carta)</button><button type="button" class="btn linea" id="exp-rep">Pedir reporte general a sus maestros</button></div>`);
   ligarBotonesInc($('#exp-lista'), () => expedienteInc(k));
+  if (i0.curp && !contA.mapa) cargarContactos().then(() => { if (!$('#modal').hidden && $('#exp-lista')) expedienteInc(k); }).catch(() => {});
+  $('#exp-cont')?.addEventListener('click', () => formContacto(i0.curp, () => expedienteInc(k)));
   $('#exp-imp').addEventListener('click', () => { cerrarModal(); imprimir(`<section class="hoja-imp rg">${cabEscuela()}<h1>Expediente de incidencias</h1>${cab}${tabla}<div class="rg-firmas" style="grid-template-columns:repeat(3,1fr)"><div>Padre, madre o tutor</div><div>Tutor(a) de grupo</div><div>Subdirector</div></div><p style="font-size:8pt;margin-top:8pt">Impreso el ${fechaLarga(new Date())}.</p></section>`); });
   $('#exp-rep').addEventListener('click', () => { cerrarModal(); estado.pestana = 'reportes'; panelDirectivo(); setTimeout(() => { try { formNuevoReporte(); } catch { /* */ } }, 400); });
 }
@@ -3000,4 +3005,130 @@ function textoConcentrado(m, modo) {
   });
   L.push('', `_${tut ? LEY_TUT : LEY_DOC}_`);
   return L.join('\n');
+}
+
+/* ======================================================================
+   DIRECTORIO DE PAPÁS · colección «contactos» (un documento por alumno, id = CURP).
+   Datos personales de las familias: solo la cuenta directiva los lee y escribe.
+   ====================================================================== */
+const REGLA_CONT = `    // Directorio de papás (teléfonos de las familias): solo la cuenta directiva.
+    match /contactos/{id} {
+      allow read, write: if esDirectivo();
+    }`;
+const contA = { mapa: null, grupo: '1G' };
+const soloDig = t => String(t || '').replace(/\D/g, '').replace(/^52(?=\d{10}$)/, '');
+const fmtTel = t => { const d = soloDig(t); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : esc(t || ''); };
+const waTel = (t, txt = '') => `https://wa.me/52${soloDig(t)}${txt ? '?text=' + encodeURIComponent(txt) : ''}`;
+const telOk = c => c && soloDig(c.tel).length === 10 && !c.malo;
+async function cargarContactos() {
+  const s = await getDocs(collection(db, 'contactos'));
+  contA.mapa = {}; s.docs.forEach(d => contA.mapa[d.id] = d.data());
+}
+function errorCont(e) {
+  console.error(e);
+  const p = $('#panel'); if (!p) return;
+  p.innerHTML = `<div class="tarjeta"><h2>Falta un paso en Firebase</h2>
+    <p>Para guardar el directorio de papás hay que agregar un permiso a las reglas de seguridad (solo una vez):</p>
+    <ol><li>Entra a <a href="https://console.firebase.google.com/project/raices-y-estrellas-est17/firestore/rules" target="_blank" rel="noopener">Firebase, Firestore, pestaña Reglas</a> (con la cuenta jesusrodriguezgarcia749).</li>
+    <li>Busca la línea que dice <b>// Todo lo demás, cerrado.</b></li>
+    <li>Justo <b>arriba</b> de esa línea pega este bloque y toca <b>Publicar</b>:</li></ol>
+    <pre style="white-space:pre-wrap;background:#fff;border:1px solid var(--linea);border-radius:10px;padding:.7rem;font-size:.85rem">${esc(REGLA_CONT)}</pre>
+    <div class="fila-btn"><button type="button" class="btn oro" id="ct-copiar">Copiar el bloque</button><button type="button" class="btn linea" id="ct-reint">Ya lo publiqué, reintentar</button></div></div>`;
+  $('#ct-copiar').addEventListener('click', async () => { try { await navigator.clipboard.writeText(REGLA_CONT); aviso('Bloque copiado.'); } catch { prompt('Copia el bloque:', REGLA_CONT); } });
+  $('#ct-reint').addEventListener('click', () => { contA.mapa = null; tabDirectorio(); });
+}
+function tabDirectorio() {
+  const p = $('#panel');
+  if (!contA.mapa) { p.innerHTML = '<div class="tarjeta"><p class="cargando">Cargando el directorio…</p></div>'; cargarContactos().then(() => tabDirectorio()).catch(errorCont); return; }
+  const act = estado.alumnos.filter(a => a.estado === 'activo');
+  const cob = g => { const A = act.filter(a => `${a.grado}${a.grupo}` === g.id); return { A, con: A.filter(a => telOk(contA.mapa[a.curp])).length }; };
+  const tot = act.length, conT = act.filter(a => telOk(contA.mapa[a.curp])).length;
+  const g = contA.grupo, { A } = cob(LISTA_GRUPOS.find(x => x.id === g) || LISTA_GRUPOS[0]);
+  const malos = act.filter(a => contA.mapa[a.curp]?.malo);
+  p.innerHTML = `
+  <div class="tarjeta"><div class="fila-btn" style="margin:0 0 .5rem"><button type="button" class="btn linea chico" id="ct-volver">← Volver a Incidencias</button></div>
+    <h2>📇 Directorio de papás</h2>
+    <p class="ayuda">Teléfonos de las familias, ligados a cada alumno. Solo la cuenta directiva los ve. Cuando un papá cambie de número, corrígelo aquí o desde el expediente del alumno.</p>
+    <div class="resumen"><div><b>${conT}</b>con teléfono</div><div><b>${tot - conT}</b>sin teléfono</div><div><b>${malos.length}</b>número equivocado</div><div><b>${tot ? Math.round(conT / tot * 100) : 0}%</b>completo</div></div>
+    <div class="fila-btn"><button type="button" class="btn oro" id="ct-imp">Importar directorio de Claude</button><input type="file" id="ct-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="ct-hoja">Hoja para que los tutores completen</button></div></div>
+  <div class="grupos" role="group" aria-label="Grupos">${LISTA_GRUPOS.map(x => { const c = cob(x); return `<button type="button" class="grupo g${x.grado}" data-cg="${x.id}" aria-pressed="${g === x.id}"><b>${x.grado}.° ${x.grupo}</b><span>${c.con} de ${c.A.length}</span></button>`; }).join('')}</div>
+  <div class="tarjeta"><h2>${g[0]}.° ${g.slice(1)} · Tutor(a): ${esc(TUTORES[g] || '—')}</h2>
+    ${A.length ? A.sort(ordenAlumno).map(a => { const c = contA.mapa[a.curp]; return `<div class="rep-fila" style="display:flex;justify-content:space-between;gap:.6rem;align-items:center;flex-wrap:wrap">
+      <span><b>${esc(nombreCompleto(a))}</b><br><small>${c && (c.tel || c.tutor) ? `${esc(c.tutor || '—')}${c.parentesco ? ` (${esc(c.parentesco)})` : ''} · ${c.tel ? fmtTel(c.tel) : 'sin número'}${c.tel2 ? ` · ${fmtTel(c.tel2)}` : ''}${c.malo ? ' · <b style="color:var(--rojo)">número equivocado</b>' : ''}` : '<span style="color:var(--rojo)">Sin teléfono</span>'}</small></span>
+      <span class="fila-btn" style="margin:0">${telOk(c) ? `<a class="btn linea chico" href="${waTel(c.tel)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}<button type="button" class="btn linea chico" data-ced="${a.curp}">Editar</button></span></div>`; }).join('') : '<p class="vacio">Este grupo no tiene alumnos activos.</p>'}</div>`;
+  $('#ct-volver').addEventListener('click', () => tabIncidencias());
+  p.querySelectorAll('[data-cg]').forEach(b => b.addEventListener('click', () => { contA.grupo = b.dataset.cg; tabDirectorio(); }));
+  p.querySelectorAll('[data-ced]').forEach(b => b.addEventListener('click', () => formContacto(b.dataset.ced, () => tabDirectorio())));
+  $('#ct-imp').addEventListener('click', () => $('#ct-arch').click());
+  $('#ct-arch').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarContactos(f); });
+  $('#ct-hoja').addEventListener('click', hojaContactos);
+}
+function formContacto(curp, alVolver) {
+  const a = estado.alumnos.find(x => x.curp === curp); if (!a) return;
+  const c = contA.mapa?.[curp] || {};
+  abrirModal('Contacto de la familia', `<p><b>${esc(nombreCompleto(a))}</b> · ${a.grado}.° ${esc(a.grupo)}</p>
+    <div class="rp-nums"><div class="campo"><label for="fc-tutor">Madre, padre o tutor</label><input id="fc-tutor" value="${esc(c.tutor || '')}"></div>
+      <div class="campo"><label for="fc-par">Parentesco</label><input id="fc-par" list="fc-pars" value="${esc(c.parentesco || '')}" placeholder="Mamá, papá, abuela…"><datalist id="fc-pars"><option>Mamá</option><option>Papá</option><option>Abuela</option><option>Abuelo</option><option>Tía</option><option>Tío</option><option>Hermano(a)</option><option>Tutor(a)</option></datalist></div></div>
+    <div class="rp-nums"><div class="campo"><label for="fc-tel">Teléfono (diez dígitos)</label><input id="fc-tel" inputmode="tel" value="${esc(c.tel || '')}" placeholder="981 123 4567"></div>
+      <div class="campo"><label for="fc-tel2">Otro teléfono (opcional)</label><input id="fc-tel2" inputmode="tel" value="${esc(c.tel2 || '')}"></div></div>
+    <label class="check"><input type="checkbox" id="fc-malo" ${c.malo ? 'checked' : ''}> El número no funciona o es equivocado (hay que pedir uno nuevo)</label>
+    <div class="campo"><label for="fc-nota">Nota (opcional)</label><input id="fc-nota" value="${esc(c.nota || '')}" placeholder="Por ejemplo: contesta solo por la tarde"></div>
+    ${c.actualizado ? `<p class="ayuda">Última actualización: ${fCorta(c.actualizado)}${c.origen === 'directorio' ? ' (del directorio importado)' : ''}.</p>` : ''}
+    <p id="fc-err" class="error" role="alert"></p>
+    <div class="fila-btn"><button type="button" class="btn oro" id="fc-ok">Guardar</button></div>`);
+  $('#fc-ok').addEventListener('click', async e => {
+    const tel = soloDig($('#fc-tel').value), tel2 = soloDig($('#fc-tel2').value);
+    if (tel && tel.length !== 10) { $('#fc-err').textContent = 'El teléfono debe tener diez dígitos.'; return; }
+    if (tel2 && tel2.length !== 10) { $('#fc-err').textContent = 'El otro teléfono debe tener diez dígitos.'; return; }
+    const d = { curp, alumno: nombreCompleto(a), grado: a.grado, grupo: a.grupo, tutor: $('#fc-tutor').value.trim(), parentesco: $('#fc-par').value.trim(), tel, tel2, malo: $('#fc-malo').checked, nota: $('#fc-nota').value.trim(), actualizado: hoyISO(), origen: 'manual' };
+    e.target.disabled = true;
+    try { await setDoc(doc(db, 'contactos', curp), d); (contA.mapa ||= {})[curp] = d; bitacora('contacto de familia actualizado', d.alumno); cerrarModal(); aviso('Contacto guardado.'); alVolver && alVolver(); }
+    catch (er) { cerrarModal(); errorCont(er); }
+  });
+}
+async function importarContactos(f) {
+  let datos; try { datos = JSON.parse(await f.text()); } catch { aviso('El archivo no es válido.', true); return; }
+  const filas = (Array.isArray(datos) ? datos : datos.contactos || []).filter(x => x && x.alumno);
+  if (!filas.length) { aviso('El archivo no trae contactos.', true); return; }
+  filas.forEach(x => { const r = ligarAlumno(x.alumno, x.grado, x.grupo); x._a = r.a; });
+  const orden = [...filas.keys()].sort((i, j) => (filas[i]._a ? 1 : 0) - (filas[j]._a ? 1 : 0));
+  const sinLigar = filas.filter(x => !x._a).length;
+  abrirModal(`Importar ${filas.length} contactos`, `<p class="ayuda">${sinLigar ? `<b>${sinLigar}</b> no se pudieron ligar solos con tu lista y aparecen primero: elige al alumno o déjalos «sin ligar» para no guardarlos.` : 'Todos se ligaron con tu lista.'} Los contactos que ya corregiste a mano no se sobrescriben.</p>
+    ${orden.map(k => { const x = filas[k]; return `<div class="rep-fila" style="display:block${x._a ? '' : ';background:#FFF6DD'}"><small>En el directorio: <b>${esc(x.alumno)}</b> (${esc(String(x.grado || ''))}.° ${esc(x.grupo || '')}) · ${esc(x.tutor || '—')} · ${x.telefono ? fmtTel(x.telefono) : '<b>sin número</b>'}</small>
+      <div class="campo" style="margin:.3rem 0">${selectorAlumno('ic' + k, x._a ? x._a.curp : '').replace(`id="ic${k}-al"`, `id="ic${k}-al" data-ic="${k}"`)}</div></div>`; }).join('')}
+    <div class="fila-btn"><button type="button" class="btn oro" id="ic-ok">Guardar contactos</button></div>`);
+  $('#ic-ok').addEventListener('click', async e => {
+    e.target.disabled = true; e.target.textContent = 'Guardando…';
+    try {
+      let n = 0, man = 0, sin = 0; const lote = writeBatch(db), usados = new Set();
+      filas.forEach((x, k) => {
+        const curp = $(`[data-ic="${k}"]`).value, a = estado.alumnos.find(z => z.curp === curp);
+        if (!a) { sin++; return; } if (usados.has(curp)) return; usados.add(curp);
+        if (contA.mapa?.[curp]?.origen === 'manual') { man++; return; }
+        const tel = soloDig(x.telefono);
+        lote.set(doc(db, 'contactos', curp), { curp, alumno: nombreCompleto(a), grado: a.grado, grupo: a.grupo, tutor: x.tutor || '', parentesco: x.parentesco || '', tel: tel.length === 10 ? tel : '', tel2: '', malo: false, nota: tel && tel.length !== 10 ? `En el directorio venía «${x.telefono}» (incompleto).` : '', actualizado: hoyISO(), origen: 'directorio' });
+        n++;
+      });
+      await lote.commit(); bitacora('directorio de papás importado', `${n} contactos`); cerrarModal(); contA.mapa = null; tabDirectorio();
+      aviso(`Listo: ${n} contactos guardados${man ? `; ${man} ya los habías corregido y se respetaron` : ''}${sin ? `; ${sin} sin ligar no se guardaron` : ''}.`);
+    } catch (er) { cerrarModal(); errorCont(er); }
+  });
+}
+function hojaContactos() {
+  abrirModal('Hoja para que los tutores completen', `<div class="campo"><label for="hc-g">Grupo</label><select id="hc-g">${LISTA_GRUPOS.map(g => `<option value="${g.id}" ${contA.grupo === g.id ? 'selected' : ''}>${g.grado}.° ${g.grupo}</option>`).join('')}<option value="todos">Todos los grupos (una hoja por grupo)</option></select></div>
+    <label class="check"><input type="checkbox" id="hc-todos"> Incluir también a los que ya tienen teléfono, para que lo confirmen</label>
+    <div class="fila-btn"><button type="button" class="btn oro" id="hc-ok">Imprimir (carta)</button></div>`);
+  $('#hc-ok').addEventListener('click', () => {
+    const gs = $('#hc-g').value === 'todos' ? LISTA_GRUPOS.map(g => g.id) : [$('#hc-g').value], todos = $('#hc-todos').checked;
+    const hojas = gs.map(g => {
+      const A = estado.alumnos.filter(a => a.estado === 'activo' && `${a.grado}${a.grupo}` === g && (todos || !telOk(contA.mapa[a.curp]))).sort(ordenAlumno);
+      if (!A.length) return '';
+      return `<section class="hoja-imp rg">${cabEscuela()}<h1>Actualización del directorio de padres de familia · ${g[0]}.° «${g.slice(1)}»</h1>
+        <p>Tutor(a): ${esc(TUTORES[g] || '—')}. Por favor, pida a cada alumno el nombre y el teléfono de su madre, padre o tutor, y entregue esta hoja a la Subdirección.</p>
+        <table><thead><tr><th>N.°</th><th>Alumno(a)</th><th>Teléfono registrado</th><th style="width:30%">Nombre del padre, madre o tutor</th><th style="width:22%">Teléfono (10 dígitos)</th></tr></thead>
+        <tbody>${A.map((a, n) => { const c = contA.mapa[a.curp]; return `<tr style="height:26pt"><td>${n + 1}</td><td class="izq">${esc(titulo(nombreCompleto(a)))}</td><td>${telOk(c) ? fmtTel(c.tel) : (c?.malo ? 'Equivocado' : '—')}</td><td></td><td></td></tr>`; }).join('')}</tbody></table>
+        <div class="rg-firmas" style="grid-template-columns:repeat(2,1fr);max-width:70%;margin-left:auto;margin-right:auto"><div>${esc(TUTORES[g] || 'Tutor(a) de grupo')}<br>Tutor(a) de grupo</div><div>Recibió: Subdirección</div></div></section>`;
+    }).join('');
+    cerrarModal(); if (!hojas) { aviso('Todos los alumnos de ese grupo ya tienen teléfono.'); return; } imprimir(hojas);
+  });
 }
