@@ -83,13 +83,13 @@ function formulario() {
 
     <h3>4. ¿Quién lo atiende?</h3>
     <fieldset class="rp-preg" id="f-at"><div class="rp-ops" style="grid-template-columns:1fr 1fr">
-      <button type="button" class="rp-op" data-at="maestro" aria-pressed="${p.at === 'maestro'}">Lo atiendo yo<br><small>Cito al papá</small></button>
-      <button type="button" class="rp-op" data-at="subdireccion" aria-pressed="${p.at !== 'maestro'}">Lo paso a la Subdirección</button></div></fieldset>
-    <div id="f-cita" ${p.at === 'maestro' ? '' : 'hidden'}>
+      <button type="button" class="rp-op" data-at="maestro" aria-pressed="${(p.at || 'maestro') === 'maestro'}" style="text-align:left"><b>Lo atiendo yo</b><br><small>Faltas de material, tareas o conducta en clase. Usted cita al padre de familia y da seguimiento.</small></button>
+      <button type="button" class="rp-op" data-at="subdireccion" aria-pressed="${p.at === 'subdireccion'}" style="text-align:left"><b>Lo atendemos juntos con la Subdirección</b><br><small>Para casos graves, como agresiones, acoso, autolesiones o reincidencia. Usted sigue como responsable; la Subdirección le acompaña en la cita y da el seguimiento legal cuando haga falta.</small></button></div></fieldset>
+    <div id="f-cita">
       <div class="rp-nums"><div class="campo"><label for="f-cf">Día de la cita</label><input id="f-cf" type="date" value="${p.cf || ''}"></div>
         <div class="campo"><label for="f-ch">Hora</label><input id="f-ch" type="time" value="${p.ch || ''}"></div></div>
       <div class="campo"><label for="f-cm">Motivo de la cita</label><input id="f-cm" value="${esc(p.cm || '')}" maxlength="300"><p class="rp-ej">💡 Ejemplo: Platicar sobre su conducta en clase y acordar cómo apoyarlo desde casa.</p></div>
-      <p class="ayuda">El citatorio lo envía la escuela por WhatsApp a la familia, para que quede como evidencia. Después de la cita, entra a «Mis reportes» y anota si asistió.</p>
+      <p class="ayuda" id="f-cita-ayuda">El citatorio lo envía la escuela por WhatsApp a la familia, para que quede como evidencia. Después de la cita, entra a «Mis reportes» y anota si asistió.</p>
     </div>
 
     <p id="f-err" class="error" role="alert"></p>
@@ -107,11 +107,14 @@ function formulario() {
   };
   $('#f-q').addEventListener('input', buscar); $('#f-g').addEventListener('change', buscar);
   pintarSel();
-  f.querySelectorAll('[data-gr]').forEach(b => b.addEventListener('click', () => { f.querySelectorAll('[data-gr]').forEach(x => x.setAttribute('aria-pressed', x === b)); borr(); }));
-  f.querySelectorAll('[data-at]').forEach(b => b.addEventListener('click', () => { f.querySelectorAll('[data-at]').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#f-cita').hidden = b.dataset.at !== 'maestro'; borr(); }));
+  const ponAt = at => { f.querySelectorAll('[data-at]').forEach(x => x.setAttribute('aria-pressed', x.dataset.at === at));
+    $('#f-cita-ayuda').textContent = at === 'maestro' ? 'El citatorio lo envía la escuela por WhatsApp a la familia, para que quede como evidencia. Después de la cita, entra a «Mis reportes» y anota si asistió.' : 'Propón el día y la hora; la Subdirección la confirma y la escuela envía el citatorio por WhatsApp. Si no sabes cuándo, déjalo en blanco y la Subdirección te propone una fecha.'; };
+  ponAt(p.at || 'maestro');
+  f.querySelectorAll('[data-gr]').forEach(b => b.addEventListener('click', () => { f.querySelectorAll('[data-gr]').forEach(x => x.setAttribute('aria-pressed', x === b)); ponAt(b.dataset.gr === 'grave' ? 'subdireccion' : 'maestro'); borr(); }));
+  f.querySelectorAll('[data-at]').forEach(b => b.addEventListener('click', () => { ponAt(b.dataset.at); borr(); }));
   const leer = () => ({ al: alSel?.c || '', g: $('#f-g').value, fecha: $('#f-fecha').value, hora: $('#f-hora').value, mat: $('#f-mat').value.trim(),
     tipos: [...f.querySelectorAll('[data-t]:checked')].map(x => x.dataset.t), grav: f.querySelector('[data-gr][aria-pressed="true"]')?.dataset.gr || 'leve',
-    hechos: $('#f-hechos').value.trim(), at: f.querySelector('[data-at][aria-pressed="true"]')?.dataset.at || 'subdireccion', cf: $('#f-cf').value, ch: $('#f-ch').value, cm: $('#f-cm').value.trim() });
+    hechos: $('#f-hechos').value.trim(), at: f.querySelector('[data-at][aria-pressed="true"]')?.dataset.at || 'maestro', cf: $('#f-cf').value, ch: $('#f-ch').value, cm: $('#f-cm').value.trim() });
   const borr = () => guardarBorr(leer());
   f.addEventListener('input', () => { borr(); $('#f-err').textContent = ''; });
   f.addEventListener('submit', async e => {
@@ -119,14 +122,16 @@ function formulario() {
     if (!alSel) { err.textContent = 'Elige al alumno.'; return; }
     if (!d.fecha) { err.textContent = 'Falta la fecha.'; return; }
     if (d.hechos.length < 10) { err.textContent = 'Describe lo que pasó.'; return; }
-    if (d.at === 'maestro' && (!d.cf || !d.ch)) { err.textContent = 'Pon el día y la hora de la cita con el papá, o elige «Lo paso a la Subdirección».'; return; }
+    if (d.at === 'maestro' && (!d.cf || !d.ch)) { err.textContent = 'Pon el día y la hora de la cita con el padre de familia.'; return; }
+    if (d.at !== 'maestro' && !!d.cf !== !!d.ch) { err.textContent = 'Para proponer la cita pon el día y la hora, o deja los dos en blanco.'; return; }
+    const conCita = d.at === 'maestro' || (d.cf && d.ch);
     const b = $('#f-ok'); b.disabled = true; b.textContent = 'Enviando…';
     const inc = { token, origen: 'maestro', maestro: B.maestro, reporta: B.maestro, curp: alSel.c, alumno: alSel.n, grado: +alSel.g[0], grupo: alSel.g.slice(1),
       fecha: d.fecha, hora: d.hora, asignatura: d.mat, tipos: d.tipos, gravedad: d.grav, hechos: d.hechos.slice(0, 2000), atiende: d.at, estado: d.at === 'maestro' ? 'seguimiento' : 'pendiente', seg: [],
-      cita: d.at === 'maestro' ? { fecha: d.cf, hora: d.ch, motivo: d.cm, con: B.maestro, enviado: '', resultado: '', acuerdos: '', hist: [] } : null,
+      cita: conCita ? { fecha: d.cf, hora: d.ch, motivo: d.cm, con: d.at === 'maestro' ? B.maestro : `${B.maestro} y Subdirección`, enviado: '', resultado: '', acuerdos: '', hist: [], ...(d.at === 'maestro' ? {} : { porConfirmar: true }) } : null,
       creadoISO: new Date().toISOString(), revisar: false };
     try { await addDoc(collection(db, 'buzon', token, 'inc'), inc); try { localStorage.removeItem(BORR); } catch { /* */ }
-      alSel = null; vista.innerHTML = `${cab()}<div class="tarjeta rp-msj"><h2>✓ Reporte enviado</h2><p>Ya le llegó a la Subdirección${d.grav === 'grave' ? ' como <b>urgente</b>' : ''}. ${d.at === 'maestro' ? 'La escuela enviará el citatorio a la familia. Después de la cita, anota en «Mis reportes» si asistió.' : 'Puedes ver cómo se atiende en «Mis reportes».'}</p>
+      alSel = null; vista.innerHTML = `${cab()}<div class="tarjeta rp-msj"><h2>✓ Reporte enviado</h2><p>Ya le llegó a la Subdirección${d.grav === 'grave' ? ' como <b>urgente</b>' : ''}. ${d.at === 'maestro' ? 'La escuela enviará el citatorio a la familia. Después de la cita, anota en «Mis reportes» si asistió.' : 'La Subdirección se pondrá de acuerdo con usted para atenderlo juntos. Puede ver el avance en «Mis reportes».'}</p>
         <div class="fila-btn"><button type="button" class="btn oro" data-v="nuevo">Hacer otro reporte</button><button type="button" class="btn linea" data-v="mios">Ver mis reportes</button></div></div>`; ligarCab(); scrollTo(0, 0);
     } catch (x) { console.error(x); b.disabled = false; b.textContent = 'Enviar reporte'; err.textContent = 'No se pudo enviar. Revisa tu conexión e inténtalo de nuevo; lo que escribiste no se borra.'; }
   });

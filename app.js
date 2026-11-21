@@ -2691,8 +2691,8 @@ function cajaCita(i) {
   const c = i.cita; if (!c) return '';
   const venc = !c.resultado && c.fecha && c.fecha < hoyISO();
   return `<div style="margin:.4rem 0;padding:.45rem .6rem;border-radius:10px;background:${venc ? '#FBEDEC' : '#F1F5FB'}"><b>📅 Cita con la familia:</b> ${fCorta(c.fecha)}, ${hora12(c.hora)} · con ${esc(c.con || '—')}${c.motivo ? ` · ${esc(c.motivo)}` : ''}
-    <br><small>${c.enviado ? `📨 Citatorio enviado el ${fTab(c.enviado.slice(0, 10))}` : '<b>⏳ Falta enviar el citatorio</b>'}${c.resultado ? ` · <b>${RES_CITA[c.resultado]}</b>` : venc ? ' · <b style="color:var(--rojo)">la fecha ya pasó y no tiene resultado</b>' : ''}${(c.hist || []).filter(h => h.resultado === 'noasistio').length >= 2 ? ' · <b style="color:var(--rojo)">la familia no ha asistido dos veces: pasa a Subdirección</b>' : ''}</small>
-    <div class="fila-btn" style="margin-top:.3rem">${c.resultado === 'asistio' ? '' : `<button type="button" class="btn ${c.enviado ? 'linea' : 'oro'} chico" data-inc-cit="${i.id}">${c.enviado ? 'Reenviar citatorio' : 'Enviar citatorio'}</button>`}<button type="button" class="btn linea chico" data-inc-res="${i.id}">Resultado de la cita</button></div></div>`;
+    <br><small>${c.porConfirmar && !c.enviado ? '<b>Fecha propuesta por el maestro: confírmala o cámbiala antes de enviar el citatorio.</b> ' : ''}${c.enviado ? `📨 Citatorio enviado el ${fTab(c.enviado.slice(0, 10))}` : '<b>⏳ Falta enviar el citatorio</b>'}${c.resultado ? ` · <b>${RES_CITA[c.resultado]}</b>` : venc ? ' · <b style="color:var(--rojo)">la fecha ya pasó y no tiene resultado</b>' : ''}${(c.hist || []).filter(h => h.resultado === 'noasistio').length >= 2 ? ' · <b style="color:var(--rojo)">la familia no ha asistido dos veces: pasa a Subdirección</b>' : ''}</small>
+    <div class="fila-btn" style="margin-top:.3rem">${c.porConfirmar && !c.enviado ? `<button type="button" class="btn linea chico" data-inc-nc="${i.id}">Confirmar o cambiar fecha</button>` : ''}${c.resultado === 'asistio' ? '' : `<button type="button" class="btn ${c.enviado ? 'linea' : 'oro'} chico" data-inc-cit="${i.id}">${c.enviado ? 'Reenviar citatorio' : 'Enviar citatorio'}</button>`}<button type="button" class="btn linea chico" data-inc-res="${i.id}">Resultado de la cita</button></div></div>`;
 }
 function botonesInc(i, exp = true) {
   return `<div class="fila-btn" style="margin-top:.4rem">${i.cita ? '' : `<button type="button" class="btn linea chico" data-inc-nc="${i.id}">Citar a la familia</button>`}<button type="button" class="btn ${estInc(i) === 'atendido' ? 'linea' : 'oro'} chico" data-inc-at="${i.id}">Seguimiento</button><button type="button" class="btn linea chico" data-inc-ed="${i.id}">Editar</button>${exp ? `<button type="button" class="btn linea chico" data-inc-exp="${esc(claveAl(i))}">Expediente del alumno</button>` : ''}</div>`;
@@ -2704,7 +2704,7 @@ function filaInc(i, exp = true) {
       <span class="envio ${colEst[e]}"${e === 'seguimiento' ? ' style="background:#E3ECF8;color:#1F3E6E"' : ''}>${estTxt(i)}</span></div>
     <div style="margin:.3rem 0">${chipsTipos(i.tipos)}</div>
     <p style="margin:.2rem 0">${esc(i.hechos || '')}</p>
-    <small class="ayuda">Reporta: ${esc(i.reporta || '—')}${i.asignatura ? ` · ${esc(i.asignatura)}` : ''}${i.hora ? ` · ${hora12(i.hora)}` : ''}${i.origen === 'maestro' ? ` · ${i.atiende === 'maestro' ? 'Lo atiende el maestro' : 'Lo pasa a la Subdirección'}` : ''}</small>
+    <small class="ayuda">Reporta: ${esc(i.reporta || '—')}${i.asignatura ? ` · ${esc(i.asignatura)}` : ''}${i.hora ? ` · ${hora12(i.hora)}` : ''}${i.origen === 'maestro' ? ` · ${i.atiende === 'maestro' ? 'Lo atiende el maestro' : 'Lo atienden juntos el maestro y la Subdirección'}` : ''}</small>
     ${cajaCita(i)}
     ${S.length ? `<ul style="margin:.35rem 0 0;padding-left:1.1rem;font-size:.92rem">${S.map(a => `<li>${esc(anotTxt(a))}${a.docentes === false ? ' <small class="ayuda">(solo Subdirección)</small>' : ''}</li>`).join('')}</ul>` : ''}
     ${botonesInc(i, exp)}</div>`;
@@ -3193,7 +3193,7 @@ function bandejaInc(L) {
   const miniCita = i => `<li><button type="button" class="enlace" data-inc-exp="${esc(claveAl(i))}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(nomInc(i))}</b></button> <small>· ${fTab(i.cita.fecha)} ${hora12(i.cita.hora)} · con ${esc(i.cita.con || '—')}${!i.cita.enviado ? ' · <b>falta citatorio</b>' : ''}${i.cita.resultado === 'noasistio' ? ' · <b style="color:var(--rojo)">no asistió</b>' : !i.cita.resultado && i.cita.fecha < hoy ? ' · <b style="color:var(--rojo)">vencida</b>' : ''}</small></li>`;
   const bloque = (t, A, f) => A.length ? `<div style="margin:.5rem 0"><h3 style="margin:0 0 .2rem;font-size:1.05rem">${t} (${A.length})</h3><ul style="margin:0;padding-left:1.2rem;line-height:1.6">${A.slice(0, 12).map(f).join('')}</ul></div>` : '';
   return `<div class="tarjeta" style="border-left:5px solid var(--oro)"><h2>Bandeja</h2>
-    ${bloque('⚠ Graves sin atender', graves, mini)}${bloque('🆕 Hoy', nuevos, mini)}${bloque('📥 Por asignar (los pasaron a la Subdirección)', porAsignar, mini)}
+    ${bloque('⚠ Graves sin atender', graves, mini)}${bloque('🆕 Hoy', nuevos, mini)}${bloque('🤝 Para atender juntos con el maestro', porAsignar, mini)}
     ${bloque('📅 Citas con la familia', citas, miniCita)}${venc.length ? `<p class="ayuda" style="color:var(--rojo)">${venc.length} cita${venc.length === 1 ? '' : 's'} ya pasaron de fecha y no tienen resultado.</p>` : ''}</div>`;
 }
 function textoCitatorio(i) {
@@ -3211,18 +3211,18 @@ async function enviarCitatorio(i, alVolver) {
   $('#ci-tel')?.addEventListener('click', () => formContacto(i.curp, () => enviarCitatorio(i, alVolver)));
   $('#ci-env').addEventListener('click', async () => {
     open(telOk(cont) ? waTel(cont.tel, txt) : 'https://wa.me/?text=' + encodeURIComponent(txt), '_blank', 'noopener');
-    try { await updateDoc(refInc(i), { cita: { ...i.cita, enviado: new Date().toISOString() } }); bitacora('citatorio enviado', nomInc(i)); cerrarModal(); await trasGuardarInc(alVolver); aviso('Citatorio registrado.'); }
+    try { await updateDoc(refInc(i), { cita: { ...i.cita, enviado: new Date().toISOString(), porConfirmar: false } }); bitacora('citatorio enviado', nomInc(i)); cerrarModal(); await trasGuardarInc(alVolver); aviso('Citatorio registrado.'); }
     catch (e) { cerrarModal(); errorInc(e); }
   });
 }
 // Nueva cita (desde la Subdirección) o resultado de la cita.
 function formCita(i, alVolver, resultado) {
   const c = i.cita || {}, g = grpInc(i);
-  abrirModal(resultado ? 'Resultado de la cita' : 'Citar a la familia', `<p><b>${esc(nomInc(i))}</b> · ${esc(g.replace(/^(\d)/, '$1.° '))}</p>
+  abrirModal(resultado ? 'Resultado de la cita' : c.porConfirmar ? 'Confirmar la cita' : 'Citar a la familia', `<p><b>${esc(nomInc(i))}</b> · ${esc(g.replace(/^(\d)/, '$1.° '))}</p>
     ${resultado ? `<p>Cita del ${fCorta(c.fecha)}, ${hora12(c.hora)}, con ${esc(c.con || '—')}.</p>
       <div class="campo"><label for="fr-r">¿Cómo fue?</label><select id="fr-r"><option value="asistio">Asistió</option><option value="noasistio">No asistió</option><option value="reprogramada">Se reprogramó</option></select></div>
       <div class="campo" id="fr-acw"><label for="fr-ac">Acuerdos</label><textarea id="fr-ac" rows="3" placeholder="Por ejemplo: la mamá revisará la libreta diario; nos vemos en dos semanas."></textarea></div>` : ''}
-    <div id="fr-nueva" ${resultado ? 'hidden' : ''}><div class="rp-nums"><div class="campo"><label for="fr-f">${resultado ? 'Nuevo día' : 'Día'}</label><input id="fr-f" type="date" value="${resultado ? '' : hoyISO()}"></div><div class="campo"><label for="fr-h">Hora</label><input id="fr-h" type="time" value="${c.hora || ''}"></div></div>
+    <div id="fr-nueva" ${resultado ? 'hidden' : ''}><div class="rp-nums"><div class="campo"><label for="fr-f">${resultado ? 'Nuevo día' : 'Día'}</label><input id="fr-f" type="date" value="${resultado ? '' : c.fecha || hoyISO()}"></div><div class="campo"><label for="fr-h">Hora</label><input id="fr-h" type="time" value="${c.hora || ''}"></div></div>
       ${resultado ? '' : `<div class="campo"><label for="fr-con">Le atiende</label><input id="fr-con" value="${esc(c.con || 'Subdirección')}"></div><div class="campo"><label for="fr-m">Motivo</label><input id="fr-m" value="${esc(c.motivo || '')}" placeholder="Por ejemplo: platicar sobre su conducta y acordar apoyos"></div>`}</div>
     <p id="fr-err" class="error" role="alert"></p><div class="fila-btn"><button type="button" class="btn oro" id="fr-ok">Guardar</button></div>`);
   if (resultado) $('#fr-r').addEventListener('change', e => { $('#fr-acw').hidden = e.target.value !== 'asistio'; $('#fr-nueva').hidden = e.target.value === 'asistio'; });
@@ -3230,7 +3230,7 @@ function formCita(i, alVolver, resultado) {
     const err = $('#fr-err'); let cita, extra = {};
     if (!resultado) {
       if (!$('#fr-f').value || !$('#fr-h').value) { err.textContent = 'Pon el día y la hora.'; return; }
-      cita = { fecha: $('#fr-f').value, hora: $('#fr-h').value, con: $('#fr-con').value.trim(), motivo: $('#fr-m').value.trim(), enviado: '', resultado: '', acuerdos: '', hist: [] };
+      cita = { fecha: $('#fr-f').value, hora: $('#fr-h').value, con: $('#fr-con').value.trim(), motivo: $('#fr-m').value.trim(), enviado: '', resultado: '', acuerdos: '', hist: c.hist || [], porConfirmar: false };
       if (estInc(i) === 'pendiente') extra.estado = 'seguimiento';
     } else {
       const r = $('#fr-r').value, hist = [...(c.hist || [])];
