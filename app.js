@@ -2590,7 +2590,7 @@ function tabDatos() {
    (Claude los lee y entrega un .json que se importa aquí) o a mano.
    Colección «incidencias»: solo la cuenta directiva lee y escribe.
    ====================================================================== */
-const TIPOS_INC = ['Uniforme o presentación personal', 'Objetos no permitidos', 'Uso de celular', 'Conducta disruptiva en clase', 'Falta de respeto al docente o personal', 'Agresión física o verbal a compañeros', 'Incumplimiento de tareas o material', 'Inasistencia, retardo o salida sin permiso', 'Daño a instalaciones o material', 'Otro'];
+const TIPOS_INC = ['Uniforme o presentación personal', 'Objetos no permitidos', 'Uso de celular', 'Conducta disruptiva en clase', 'Falta de respeto al docente o personal', 'Agresión física o verbal a compañeros', 'Acoso o uso indebido de redes sociales', 'Incumplimiento de tareas o material', 'Inasistencia, retardo o salida sin permiso', 'Daño a instalaciones o material', 'Otro'];
 const TUTORES = { '1G': 'Diana Cabañas Jau', '1H': 'Simón Pereira Azul', '1I': 'Ramonita Díaz Sanguino', '2G': 'Ingrid R. de la Gala Soberanis', '2H': 'Heidi Gómez Brito', '3G': 'Guadalupe Quiñones Heredia', '3H': 'Lisette Ortega Aranda' };
 const PREFECTO = g => g === 1 ? 'Verónica Manrique Pérez' : 'Román (prefecto de 2.° y 3.°)';
 const REGLA_INC = `    // Incidencias de alumnos (reportes de conducta): solo la cuenta directiva.
@@ -2643,7 +2643,7 @@ function tabIncidencias() {
   <div class="tarjeta"><h2>Incidencias</h2>
     <p class="ayuda">Reportes de conducta de los alumnos. Mándale a Claude las fotos de los reportes en papel; él te entrega un archivo que subes aquí con «Importar».</p>
     <div class="resumen"><div><b>${L.length}</b>reportes</div><div><b>${pend}</b>pendientes</div><div><b>${L.length - pend}</b>atendidos</div><div><b>${Object.keys(porAl).length}</b>alumnos</div></div>
-    <div class="fila-btn"><button type="button" class="btn oro" id="inc-nueva">Registrar incidencia</button><button type="button" class="btn linea" id="inc-imp">Importar archivo de Claude</button><input type="file" id="inc-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="inc-semana">Hoja semanal por grupo</button></div></div>
+    <div class="fila-btn"><button type="button" class="btn oro" id="inc-nueva">Registrar incidencia</button><button type="button" class="btn linea" id="inc-imp">Importar archivo de Claude</button><input type="file" id="inc-arch" accept=".json,application/json" hidden><button type="button" class="btn linea" id="inc-semana">Hoja semanal por grupo</button><button type="button" class="btn linea" id="inc-conc">Concentrado para docentes</button></div></div>
   <div class="grupos" role="group" aria-label="Grupos"><button type="button" class="grupo" data-ig="todos" aria-pressed="${incA.grupo === 'todos'}"><b>Todos</b><span>${L.length}</span></button>
     ${LISTA_GRUPOS.map(x => `<button type="button" class="grupo g${x.grado}" data-ig="${x.id}" aria-pressed="${incA.grupo === x.id}"><b>${x.grado}.° ${x.grupo}</b><span>${(n => `${n} reporte${n === 1 ? '' : 's'}`)(L.filter(i => grpInc(i) === x.id).length)}</span></button>`).join('')}</div>
   <div class="tarjeta"><h2>Los más reportados${incA.grupo === 'todos' ? '' : ` · ${incA.grupo[0]}.° ${incA.grupo.slice(1)}`}</h2>
@@ -2658,6 +2658,7 @@ function tabIncidencias() {
   $('#inc-imp').addEventListener('click', () => $('#inc-arch').click());
   $('#inc-arch').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarIncidencias(f); });
   $('#inc-semana').addEventListener('click', hojaSemanalInc);
+  $('#inc-conc').addEventListener('click', concentradoInc);
   p.querySelectorAll('[data-inc-at]').forEach(b => b.addEventListener('click', () => formAtencion(L.find(i => i.id === b.dataset.incAt))));
   p.querySelectorAll('[data-inc-ed]').forEach(b => b.addEventListener('click', () => formIncidencia(L.find(i => i.id === b.dataset.incEd))));
   p.querySelectorAll('[data-inc-exp]').forEach(b => b.addEventListener('click', () => expedienteInc(b.dataset.incExp)));
@@ -2770,5 +2771,38 @@ function hojaSemanalInc() {
         <p style="margin-top:3em;display:flex;justify-content:space-between;gap:2em"><span>____________________<br>Tutor(a) de grupo</span><span>____________________<br>Prefecto(a)</span><span>____________________<br>Subdirector</span></p></section>`;
     }).join('');
     cerrarModal(); imprimir(hojas);
+  });
+}
+
+// Concentrado para compartir con los docentes: por grupo, alumnos con reportes, tipos y estado; el trabajo de la subdirección.
+function concentradoInc() {
+  const L0 = incA.lista || []; const fechas = L0.map(i => i.fecha).filter(Boolean).sort();
+  abrirModal('Concentrado para docentes', `<div class="rp-nums"><div class="campo"><label for="ci-g">Grupo</label><select id="ci-g"><option value="todos">Todos los grupos</option>${LISTA_GRUPOS.map(g => `<option value="${g.id}">${g.grado}.° ${g.grupo}</option>`).join('')}</select></div>
+    <div class="campo"><label for="ci-d">Desde</label><input id="ci-d" type="date" value="${fechas[0] || hoyISO()}"></div><div class="campo"><label for="ci-h">Hasta</label><input id="ci-h" type="date" value="${hoyISO()}"></div></div>
+    <label class="check"><input type="checkbox" id="ci-det"> Incluir el detalle de cada reporte (lo que pasó)</label>
+    <p class="ayuda">Sugerencia: para el grupo de maestros, compártelo <b>sin el detalle</b>: los reportes mencionan a otros alumnos y situaciones delicadas. El detalle completo queda en el expediente de cada alumno.</p>
+    <div class="fila-btn"><button type="button" class="btn oro" id="ci-ok">Imprimir o guardar PDF</button></div>`);
+  $('#ci-ok').addEventListener('click', () => {
+    const gsel = $('#ci-g').value, d = $('#ci-d').value, h = $('#ci-h').value, det = $('#ci-det').checked;
+    const L = L0.filter(i => i.fecha >= d && i.fecha <= h && (gsel === 'todos' || grpInc(i) === gsel));
+    const at = L.filter(i => i.estado === 'atendido').length, ent = L.filter(i => i.enterado).length;
+    const porTipo = {}; L.forEach(i => (i.tipos || []).forEach(t => porTipo[t] = (porTipo[t] || 0) + 1));
+    const grupos = (gsel === 'todos' ? LISTA_GRUPOS.map(g => g.id) : [gsel]).filter(g => L.some(i => grpInc(i) === g));
+    const sec = grupos.map(g => {
+      const G = L.filter(i => grpInc(i) === g); const al = {};
+      G.forEach(i => { const k = claveAl(i); (al[k] ||= { nom: nomInc(i), n: 0, p: 0, tipos: new Set(), ult: '' }); al[k].n++; if (i.estado !== 'atendido') al[k].p++; (i.tipos || []).forEach(t => al[k].tipos.add(t)); if (i.fecha > al[k].ult) al[k].ult = i.fecha; });
+      const filas = Object.values(al).sort((a, b) => b.n - a.n || a.nom.localeCompare(b.nom, 'es'));
+      return `<h2 style="font-size:13pt;margin:14pt 0 4pt">${g[0]}.° ${g.slice(1)} · Tutor(a): ${esc(TUTORES[g] || '—')} · ${G.length} reporte${G.length === 1 ? '' : 's'}</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:10pt"><thead><tr><th style="text-align:left">Alumno</th><th>Reportes</th><th style="text-align:left">Tipo de falta</th><th>Pendientes</th><th>Último</th></tr></thead>
+        <tbody>${filas.map(a => `<tr style="border-top:1px solid #999;vertical-align:top"><td>${esc(a.nom)}</td><td style="text-align:center">${a.n}</td><td>${esc([...a.tipos].join('; '))}</td><td style="text-align:center">${a.p || '—'}</td><td>${fCorta(a.ult)}</td></tr>`).join('')}</tbody></table>
+        ${det ? `<ul style="font-size:9.5pt;margin:6pt 0 0 1.1em">${G.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')).map(i => `<li><b>${esc(nomInc(i))}</b>, ${fCorta(i.fecha)} (${esc(i.reporta || '—')}): ${esc(i.hechos || '')} <i>${i.estado === 'atendido' ? 'Atendido' + (i.atendidoPor ? ' por ' + esc(i.atendidoPor) : '') : 'Pendiente'}.</i></li>`).join('')}</ul>` : ''}`;
+    }).join('');
+    cerrarModal();
+    imprimir(`<section class="hoja-imp"><div class="imp-membrete">Escuela Secundaria Técnica N.° 17, Turno Vespertino · Subdirección</div><h1>Concentrado de incidencias</h1>
+      <p>Del ${fCorta(d)} al ${fCorta(h)}${gsel === 'todos' ? '' : ` · ${gsel[0]}.° ${gsel.slice(1)}`}</p>
+      <p><b>${L.length}</b> reportes recibidos · <b>${at}</b> atendidos · <b>${L.length - at}</b> pendientes · <b>${ent}</b> con padre, madre o tutor enterado · <b>${new Set(L.map(claveAl)).size}</b> alumnos</p>
+      <p style="font-size:10pt">Por tipo de falta: ${Object.entries(porTipo).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${esc(t)}: ${n}`).join(' · ') || '—'}</p>
+      ${sec || '<p>Sin reportes en este periodo.</p>'}
+      <p style="font-size:9.5pt;margin-top:14pt">Cada reporte se atiende con el tutor del grupo y la prefectura; los acuerdos y las firmas de enterado de las familias quedan en el expediente de cada alumno. Documento de uso interno.</p></section>`);
   });
 }
