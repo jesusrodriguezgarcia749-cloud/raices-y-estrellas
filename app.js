@@ -2770,7 +2770,7 @@ function formAtencion(i, alVolver = null) {
     ${S.length ? S.map((a, k) => `<div class="rep-fila" style="display:flex;justify-content:space-between;gap:.5rem;align-items:flex-start"><span>${esc(anotTxt(a))}${a.docentes === false ? ' <small class="ayuda">(solo Subdirección)</small>' : ''}</span><button type="button" class="btn linea chico" data-sx="${k}" aria-label="Quitar anotación">Quitar</button></div>`).join('') : '<p class="ayuda">Todavía no hay anotaciones.</p>'}
     <h3 style="margin:.9rem 0 .3rem">Agregar anotación</h3>
     <div class="rp-nums"><div class="campo"><label for="fa-fecha">Fecha</label><input id="fa-fecha" type="date" value="${hoyISO()}"></div>
-      <div class="campo"><label for="fa-quien">Quién atendió</label><input id="fa-quien" value="${esc(S.length ? S[S.length - 1].quien : (TUTORES[g] ? 'Subdirección y ' + TUTORES[g] : 'Subdirección'))}"></div></div>
+      <div class="campo"><label for="fa-quien">Quién atendió</label><input id="fa-quien" value="${esc(S.length ? S[S.length - 1].quien : '')}" placeholder="Por ejemplo: Director, subdirector y tutora"></div></div>
     <div class="campo"><label for="fa-acc">Qué se hizo o qué se acordó</label><textarea id="fa-acc" rows="3" placeholder="Por ejemplo: vino la mamá; acuerdo: revisará la libreta todos los días y regresa en dos semanas."></textarea></div>
     <div class="campo"><label for="fa-ent">Familiar enterado (nombre)</label><input id="fa-ent" placeholder="Por ejemplo: Sra. Leydi Cu Sánchez (mamá)"></div>
     <label class="check"><input type="checkbox" id="fa-doc" ${esConf(i) ? 'disabled' : 'checked'}> Que los maestros vean esta anotación en el concentrado${esConf(i) ? ' <span class="ayuda">(no aplica: el reporte es confidencial)</span>' : ''}</label>
@@ -2886,7 +2886,7 @@ function modeloInc(gsel, d, h) {
   });
   return { gsel, d, h, L, T: cuenta(L), porTipo: Object.entries(porTipo).sort((a, b) => b[1] - a[1]), grupos };
 }
-// Estado de un alumno para los maestros: «2 atendidos, 1 en seguimiento» y las dos últimas acciones compartibles.
+// Estado de un alumno para los maestros (columna «Atención y seguimiento de la escuela»): «2 atendidos, 1 en seguimiento» y las dos últimas acciones compartibles.
 const estAlTxt = a => [a.at && `${a.at} atendido${a.at === 1 ? '' : 's'}`, a.sg && `${a.sg} en seguimiento`, a.p && `${a.p} pendiente${a.p === 1 ? '' : 's'}`].filter(Boolean).join(', ');
 const hechoAlTxt = a => a.hecho.sort((x, y) => (x.fecha || '').localeCompare(y.fecha || '')).slice(-2).map(h => anotTxt(h, false));
 function concentradoInc() {
@@ -2927,7 +2927,7 @@ function htmlConcentrado(m, modo) {
     <h1>Concentrado de incidencias de los alumnos</h1>
     <div class="rg-datos"><div><small>Periodo</small>Del ${fCorta(m.d)} al ${fCorta(m.h)}</div><div><small>Grupos</small>${m.gsel === 'todos' ? 'Todos' : gNomInc(m.gsel)}</div><div><small>Fecha de impresión</small>${fCorta(hoyISO())}</div></div>
     <div class="rg-res" style="grid-template-columns:repeat(5,1fr)"><div>Reportes recibidos<b>${T.n}</b></div><div>Atendidos<b>${T.at}</b></div><div>En seguimiento<b>${T.sg}</b></div><div>Pendientes<b>${T.n - T.at - T.sg}</b></div><div>Familias enteradas<b>${T.ent}</b></div></div>
-    <p style="margin:2pt 0 0">${T.al} alumnos con al menos un reporte.${T.n ? ` La Subdirección ya intervino en ${Math.round((T.at + T.sg) / T.n * 100)} de cada cien reportes recibidos.` : ''}</p>
+    <p style="margin:2pt 0 0">${T.al} alumnos con al menos un reporte.${T.n ? ` La escuela ya intervino en ${Math.round((T.at + T.sg) / T.n * 100)} de cada cien reportes recibidos.` : ''}</p>
     <h2>Por grupo</h2>
     <table><thead><tr><th>Grupo</th><th>Tutor(a)</th><th>Reportes</th><th>Alumnos</th><th>Atendidos</th><th>En seguimiento</th><th>Pendientes</th></tr></thead>
     <tbody>${m.grupos.map(({ g, k }) => `<tr><td>${gNomInc(g)}</td><td class="izq">${esc(TUTORES[g] || '—')}</td><td>${k.n}</td><td>${k.al}</td><td>${k.at}</td><td>${k.sg || '—'}</td><td>${k.n - k.at - k.sg || '—'}</td></tr>`).join('')}
@@ -2942,7 +2942,7 @@ function htmlConcentrado(m, modo) {
     <div class="rg-datos"><div><small>Tutor(a) de grupo</small>${esc(TUTORES[g] || '—')}</div><div><small>Prefecto(a)</small>${esc(PREFECTO(+g[0]))}</div><div><small>Periodo</small>Del ${fCorta(m.d)} al ${fCorta(m.h)}</div></div>
     <div class="rg-res" style="grid-template-columns:repeat(5,1fr)"><div>Reportes<b>${k.n}</b></div><div>Alumnos<b>${k.al}</b></div><div>Atendidos<b>${k.at}</b></div><div>En seguimiento<b>${k.sg}</b></div><div>Pendientes<b>${k.n - k.at - k.sg}</b></div></div>
     <h2>Alumnos con reportes</h2>
-    <table><thead><tr><th>N.°</th><th>Alumno(a)</th><th>Rep.</th><th>Tipo de falta</th><th>Reportado por</th><th>Lo que ha hecho la Subdirección</th></tr></thead>
+    <table><thead><tr><th>N.°</th><th>Alumno(a)</th><th>Rep.</th><th>Tipo de falta</th><th>Reportado por</th><th>Atención y seguimiento de la escuela</th></tr></thead>
     <tbody>${filas.map((a, n) => `<tr><td>${n + 1}</td><td class="izq">${esc(a.nom)}</td><td>${a.n}</td><td class="izq">${esc([...a.tipos].join('; '))}</td><td class="izq">${esc([...a.quien].join('; '))}</td><td class="izq"><b>${estAlTxt(a)}</b>${hechoAlTxt(a).map(t => `<br>• ${esc(t)}`).join('')}</td></tr>`).join('')}</tbody></table>
     ${tut ? `<h2>Detalle de los reportes</h2>
     <table><thead><tr><th>Fecha</th><th>Alumno(a)</th><th>Reporta</th><th>Lo que pasó</th><th>Seguimiento</th></tr></thead>
@@ -2960,7 +2960,7 @@ async function pdfIncidencias(m, modo) {
     d.titulo('Concentrado de incidencias de los alumnos');
     d.parrafo(`Del ${fCorta(m.d)} al ${fCorta(m.h)} · ${m.gsel === 'todos' ? 'Todos los grupos' : gNomInc(m.gsel)} · impreso el ${fCorta(hoyISO())}`, 9.5, '#5B4E40');
     d.y -= 4; d.cifras([[String(T.n), 'reportes recibidos'], [String(T.at), 'atendidos'], [String(T.sg), 'en seguimiento'], [String(T.n - T.at - T.sg), 'pendientes'], [String(T.ent), 'familias enteradas']]);
-    d.parrafo(`${T.al} alumnos con al menos un reporte.${T.n ? ` La Subdirección ya intervino en ${Math.round((T.at + T.sg) / T.n * 100)} de cada cien reportes recibidos.` : ''}`);
+    d.parrafo(`${T.al} alumnos con al menos un reporte.${T.n ? ` La escuela ya intervino en ${Math.round((T.at + T.sg) / T.n * 100)} de cada cien reportes recibidos.` : ''}`);
     d.subtitulo('Por grupo');
     d.tablaW([{ t: 'Grupo', w: 46 }, { t: 'Tutor(a)', w: 160 }, { t: 'Reportes', w: 56 }, { t: 'Alumnos', w: 56 }, { t: 'Atendidos', w: 60 }, { t: 'En seguim.', w: 62 }, { t: 'Pendientes' }],
       [...m.grupos.map(({ g, k }) => [gNomInc(g), TUTORES[g] || '—', k.n, k.al, k.at, k.sg || '—', k.n - k.at - k.sg || '—']), ['Total', '', T.n, T.al, T.at, T.sg, T.n - T.at - T.sg]]);
@@ -2975,7 +2975,7 @@ async function pdfIncidencias(m, modo) {
     d.parrafo(`Tutor(a): ${TUTORES[g] || '—'} · Prefecto(a): ${PREFECTO(+g[0])} · del ${fCorta(m.d)} al ${fCorta(m.h)}`, 9.5, '#5B4E40');
     d.y -= 4; d.cifras([[String(k.n), 'reportes'], [String(k.al), 'alumnos'], [String(k.at), 'atendidos'], [String(k.sg), 'en seguimiento'], [String(k.n - k.at - k.sg), 'pendientes']]);
     d.subtitulo('Alumnos con reportes');
-    d.tablaW([{ t: 'N.°', w: 22 }, { t: 'Alumno(a)', w: 98 }, { t: 'Rep.', w: 26 }, { t: 'Tipo de falta', w: 112 }, { t: 'Reportado por', w: 112 }, { t: 'Lo que ha hecho la Subdirección' }],
+    d.tablaW([{ t: 'N.°', w: 22 }, { t: 'Alumno(a)', w: 98 }, { t: 'Rep.', w: 26 }, { t: 'Tipo de falta', w: 112 }, { t: 'Reportado por', w: 112 }, { t: 'Atención y seguimiento de la escuela' }],
       filas.map((a, j) => [j + 1, a.nom, a.n, [...a.tipos].join('; '), [...a.quien].join('; '), [estAlTxt(a), ...hechoAlTxt(a)].join('. ')]), 8);
     if (tut) {
       d.subtitulo('Detalle de los reportes');
