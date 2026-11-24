@@ -2701,7 +2701,7 @@ function avisoTutorTxt(i) {
   return `Maestro(a) ${TUTORES[g] || ''}: le informo que ${i.reporta || 'el personal de la escuela'}${i.cargoReporta && i.cargoReporta !== 'Docente' ? ` (${i.cargoReporta})` : ''} reportó una incidencia de su alumno(a) ${titulo(nomInc(i))}, de ${g.replace(/^(\d)/, '$1.° ')}, el ${fCorta(i.fecha)}${i.asignatura ? ` (${i.asignatura})` : ''}:\n\n${esConf(i) ? 'Es un asunto confidencial; lo platicamos en persona.' : i.hechos}\n\nComo tutor(a) del grupo, le pido darle seguimiento y, si es necesario, citar a la familia. La Subdirección queda a sus órdenes.`;
 }
 function botonesInc(i, exp = true) {
-  return `<div class="fila-btn" style="margin-top:.4rem">${i.atiende === 'tutor' ? `<a class="btn linea chico" href="https://wa.me/?text=${encodeURIComponent(avisoTutorTxt(i))}" target="_blank" rel="noopener">Avisar al tutor</a>` : ''}${i.cita ? '' : `<button type="button" class="btn linea chico" data-inc-nc="${i.id}">Citar a la familia</button>`}<button type="button" class="btn ${estInc(i) === 'atendido' ? 'linea' : 'oro'} chico" data-inc-at="${i.id}">Seguimiento</button><button type="button" class="btn linea chico" data-inc-ed="${i.id}">Editar</button>${exp ? `<button type="button" class="btn linea chico" data-inc-exp="${esc(claveAl(i))}">Expediente del alumno</button>` : ''}</div>`;
+  return `<div class="fila-btn" style="margin-top:.4rem">${i.atiende === 'tutor' ? `<a class="btn linea chico" href="https://wa.me/?text=${encodeURIComponent(avisoTutorTxt(i))}" target="_blank" rel="noopener">Avisar al tutor</a>` : ''}${i.cita ? '' : `<button type="button" class="btn linea chico" data-inc-nc="${i.id}">Citar a la familia</button>`}<button type="button" class="btn linea chico" data-inc-fam="${i.id}">📲 Enviar a la familia</button><button type="button" class="btn ${estInc(i) === 'atendido' ? 'linea' : 'oro'} chico" data-inc-at="${i.id}">Seguimiento</button><button type="button" class="btn linea chico" data-inc-ed="${i.id}">Editar</button>${exp ? `<button type="button" class="btn linea chico" data-inc-exp="${esc(claveAl(i))}">Expediente del alumno</button>` : ''}</div>`;
 }
 function filaInc(i, exp = true) {
   const S = anotInc(i), e = estInc(i);
@@ -2712,6 +2712,7 @@ function filaInc(i, exp = true) {
     <p style="margin:.2rem 0">${esc(i.hechos || '')}</p>
     <small class="ayuda">Reporta: ${esc(i.reporta || '—')}${i.cargoReporta && i.cargoReporta !== 'Docente' ? ` (${esc(i.cargoReporta)})` : ''}${i.capturo ? ' · lo capturó la Subdirección' : ''}${i.asignatura ? ` · ${esc(i.asignatura)}` : ''}${i.hora ? ` · ${hora12(i.hora)}` : ''}${i.origen === 'maestro' ? ` · ${i.atiende === 'maestro' ? 'Lo atiende el maestro' : i.atiende === 'tutor' ? `Turnado al tutor: ${esc(TUTORES[grpInc(i)] || '—')}` : 'Lo atienden juntos con la Subdirección'}` : ''}</small>
     ${cajaCita(i)}
+    ${i.avisoFam ? `<small class="ayuda" style="display:block;margin-top:.2rem">📲 Reporte enviado a la familia por WhatsApp el ${fTab(new Date(i.avisoFam).toLocaleDateString('en-CA'))} a las ${hora12(new Date(i.avisoFam).toTimeString().slice(0, 5)).replace(/\.$/, '')}.</small>` : ''}
     ${S.length ? `<ul style="margin:.35rem 0 0;padding-left:1.1rem;font-size:.92rem">${S.map(a => `<li>${esc(anotTxt(a))}${a.docentes === false ? ' <small class="ayuda">(solo Subdirección)</small>' : ''}</li>`).join('')}</ul>` : ''}
     ${botonesInc(i, exp)}</div>`;
 }
@@ -2756,6 +2757,7 @@ function ligarBotonesInc(cont, alVolver = null) {
   cont.querySelectorAll('[data-inc-exp]').forEach(b => b.addEventListener('click', () => expedienteInc(b.dataset.incExp)));
   cont.querySelectorAll('[data-inc-cit]').forEach(b => b.addEventListener('click', () => enviarCitatorio(L.find(i => i.id === b.dataset.incCit), alVolver)));
   cont.querySelectorAll('[data-inc-res]').forEach(b => b.addEventListener('click', () => formCita(L.find(i => i.id === b.dataset.incRes), alVolver, true)));
+  cont.querySelectorAll('[data-inc-fam]').forEach(b => b.addEventListener('click', () => enviarAFamilia([L.find(i => i.id === b.dataset.incFam)], alVolver)));
   cont.querySelectorAll('[data-inc-nc]').forEach(b => b.addEventListener('click', () => formCita(L.find(i => i.id === b.dataset.incNc), alVolver, false)));
 }
 // Después de guardar: recarga la lista y vuelve a donde estaba (la pestaña o el expediente abierto).
@@ -2880,10 +2882,11 @@ function expedienteInc(k) {
   const cAl = i0.curp ? contA.mapa?.[i0.curp] : null;
   const cajaCont = i0.curp ? `<div class="rep-fila" style="display:block;background:#F6EEDC"><b>📇 Contacto de la familia:</b> ${cAl && cAl.tel ? `${esc(cAl.tutor || '—')}${cAl.parentesco ? ` (${esc(cAl.parentesco)})` : ''} · <a href="${waTel(cAl.tel)}" target="_blank" rel="noopener">${fmtTel(cAl.tel)}</a>${cAl.tel2 ? ` · ${fmtTel(cAl.tel2)}` : ''}${cAl.malo ? ' · <b style="color:var(--rojo)">número equivocado</b>' : ''}` : '<span style="color:var(--rojo)">sin teléfono registrado</span>'} <button type="button" class="btn linea chico" id="exp-cont">Editar contacto</button></div>` : '';
   abrirModal('Expediente de incidencias', `${cab}${cajaCont}<div id="exp-lista">${L.map(i => filaInc(i, false)).join('')}</div>
-    <div class="fila-btn" style="margin-top:.8rem"><button type="button" class="btn oro" id="exp-imp">Imprimir (carta)</button><button type="button" class="btn linea" id="exp-rep">Pedir reporte general a sus maestros</button></div>`);
+    <div class="fila-btn" style="margin-top:.8rem"><button type="button" class="btn oro" id="exp-fam">📲 Enviar reporte a la familia por WhatsApp</button><button type="button" class="btn oro" id="exp-imp">Imprimir (carta)</button><button type="button" class="btn linea" id="exp-rep">Pedir reporte general a sus maestros</button></div>`);
   ligarBotonesInc($('#exp-lista'), () => expedienteInc(k));
   if (i0.curp && !contA.mapa) cargarContactos().then(() => { if (!$('#modal').hidden && $('#exp-lista')) expedienteInc(k); }).catch(() => {});
   $('#exp-cont')?.addEventListener('click', () => formContacto(i0.curp, () => expedienteInc(k)));
+  $('#exp-fam').addEventListener('click', () => enviarAFamilia(L, () => expedienteInc(k)));
   $('#exp-imp').addEventListener('click', () => { cerrarModal(); imprimir(`<section class="hoja-imp rg">${cabEscuela()}<h1>Expediente de incidencias</h1>${cab}${tabla}<div class="rg-firmas" style="grid-template-columns:repeat(3,1fr)"><div>Padre, madre o tutor</div><div>Tutor(a) de grupo</div><div>Subdirector</div></div><p style="font-size:8pt;margin-top:8pt">Impreso el ${fechaLarga(new Date())}.</p></section>`); });
   $('#exp-rep').addEventListener('click', () => { cerrarModal(); estado.pestana = 'reportes'; panelDirectivo(); setTimeout(() => { try { formNuevoReporte(); } catch { /* */ } }, 400); });
 }
@@ -3208,6 +3211,34 @@ function bandejaInc(L) {
 function textoCitatorio(i) {
   const c = i.cita, cf = estado.config || {}, cont = i.curp ? contA.mapa?.[i.curp] : null;
   return `*Escuela Secundaria Técnica N.° 17 · Turno Vespertino*\n\n${cont?.tutor ? `Estimado(a) ${cont.tutor}:` : 'Estimado padre, madre o tutor:'}\n\nPor medio del presente, se le cita para tratar asuntos relacionados con su hijo(a) *${titulo(nomInc(i))}*, de ${grpInc(i).replace(/^(\d)/, '$1.° ')}.\n\n📅 *Día:* ${fechaLarga(fISO(c.fecha))}\n🕐 *Hora:* ${hora12(c.hora)}\n👤 *Le atiende:* ${c.con || 'Subdirección'}${c.motivo ? `\n📝 *Motivo:* ${c.motivo}` : ''}\n\nLe pedimos su puntual asistencia. Si no le es posible acudir, por favor responda este mensaje para acordar otra fecha.\n\nAtentamente,\n${cf.subdirector || 'Subdirección'}\n${cf.cargoSubdirector || 'Subdirector del Turno Vespertino'}`;
+}
+// Reporte a la familia por WhatsApp (uno o varios). Lo confidencial no lleva los hechos: se trata en persona.
+function textoAFamilia(L) {
+  const i0 = L[0], cf = estado.config || {}, cont = i0.curp ? contA.mapa?.[i0.curp] : null, uno = L.length === 1;
+  const item = (i, n) => `${uno ? '' : `*${n + 1}.* `}📅 ${fechaLarga(fISO(i.fecha))}${i.hora ? `, ${hora12(i.hora)}` : ''}\n🏷️ ${(i.tipos || ['Otro']).join(', ')}\n📝 ${esConf(i) ? 'Asunto confidencial: se lo explicaremos en persona.' : (i.hechos || '').trim()}${i.asignatura ? `\n📚 ${i.asignatura}` : ''}`;
+  return `*Escuela Secundaria Técnica N.° 17 · Turno Vespertino*\n\n${cont?.tutor ? `Estimado(a) ${cont.tutor}:` : 'Estimado padre, madre o tutor:'}\n\nLe informamos que su hijo(a) *${titulo(nomInc(i0))}*, de ${grpInc(i0).replace(/^(\d)/, '$1.° ')}, tiene ${uno ? 'el siguiente reporte' : `los siguientes ${L.length} reportes`}:\n\n${L.map(item).join('\n\n')}\n\nLe pedimos platicar con su hijo(a) sobre esta situación y apoyarnos desde casa para que no se repita. Si tiene alguna duda, puede responder este mensaje o acudir a la escuela.\n\nAtentamente,\n${cf.subdirector || 'Subdirección'}\n${cf.cargoSubdirector || 'Subdirector del Turno Vespertino'}`;
+}
+async function enviarAFamilia(L0, alVolver) {
+  L0 = (L0 || []).filter(Boolean); if (!L0.length) return;
+  if (!contA.mapa) { try { await cargarContactos(); } catch { contA.mapa = {}; } }
+  const i0 = L0[0], cont = i0.curp ? contA.mapa[i0.curp] : null;
+  const pinta = sel => {
+    const L = L0.filter(i => sel.has(i.id)), txt = L.length ? textoAFamilia(L) : '';
+    abrirModal('Enviar reporte a la familia', `<p>Se abrirá WhatsApp con el reporte ya escrito${telOk(cont) ? ` para <b>${esc(cont.tutor || 'la familia')}</b> al <b>${fmtTel(cont.tel)}</b>` : '. <b>Este alumno no tiene teléfono en el directorio</b>: elige el contacto en WhatsApp'}.</p>
+      ${L0.length > 1 ? `<p class="ayuda" style="margin:.2rem 0">Elige qué reportes enviar:</p>${L0.map(i => `<label class="check"><input type="checkbox" data-fsel="${i.id}" ${sel.has(i.id) ? 'checked' : ''}> ${fTab(i.fecha)} · ${esc((i.tipos || ['Otro']).join(', '))}${i.avisoFam ? ' <small class="ayuda">(ya enviado)</small>' : ''}</label>`).join('')}` : ''}
+      <pre style="white-space:pre-wrap;background:#fff;border:1px solid var(--linea);border-radius:10px;padding:.7rem;font:inherit;font-size:.9rem">${esc(txt || 'Elige al menos un reporte.')}</pre>
+      <p class="ayuda">Al tocar el botón queda registrado que la escuela envió el reporte a la familia (fecha y hora), como evidencia. Lo confidencial no lleva los hechos.</p>
+      <div class="fila-btn"><button type="button" class="btn oro" id="fa-env" ${L.length ? '' : 'disabled'}>Abrir WhatsApp y registrar envío</button>${i0.curp ? '<button type="button" class="btn linea" id="fa-tel">Editar teléfono</button>' : ''}</div>`);
+    document.querySelectorAll('[data-fsel]').forEach(c => c.addEventListener('change', () => { c.checked ? sel.add(c.dataset.fsel) : sel.delete(c.dataset.fsel); pinta(sel); }));
+    $('#fa-tel')?.addEventListener('click', () => formContacto(i0.curp, () => enviarAFamilia(L0, alVolver)));
+    $('#fa-env').addEventListener('click', async () => {
+      open(telOk(cont) ? waTel(cont.tel, txt) : 'https://wa.me/?text=' + encodeURIComponent(txt), '_blank', 'noopener');
+      const t = new Date().toISOString();
+      try { await Promise.all(L.map(i => updateDoc(refInc(i), { avisoFam: t }))); bitacora('reporte enviado a la familia', nomInc(i0)); cerrarModal(); await trasGuardarInc(alVolver); aviso('Envío a la familia registrado.'); }
+      catch (e) { cerrarModal(); errorInc(e); }
+    });
+  };
+  pinta(new Set(L0.filter(i => !i.avisoFam).map(i => i.id).concat(L0.every(i => i.avisoFam) ? L0.map(i => i.id) : [])));
 }
 async function enviarCitatorio(i, alVolver) {
   if (!i?.cita) return;
