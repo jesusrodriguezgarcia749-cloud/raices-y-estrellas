@@ -19,6 +19,7 @@ const vista = $('#vista');
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const normal = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const fLoc = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? String(iso).slice(0, 10) : d.toLocaleDateString('en-CA'); };
 const fLarga = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-').map(Number); return `${d} de ${MESES[m - 1]}`; };
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const horaAhora = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -148,12 +149,14 @@ async function misReportes() {
   const anot = a => `${a.fecha ? fLarga(a.fecha) + ': ' : ''}${a.que || 'Atención'}${a.quien ? ` (${a.quien})` : ''}`;
   const visibles = i => i.confidencial ? [] : (i.seg || []).filter(a => a.docentes !== false && a.que);
   const citaTxt = c => !c ? '' : `<p style="margin:.4rem 0 0"><b>Cita con la familia:</b> ${fLarga(c.fecha)}, ${hora12(c.hora)}${c.motivo ? ` · ${esc(c.motivo)}` : ''}<br>
-    ${c.enviado ? `<small>📨 Citatorio enviado por la escuela el ${fLarga(c.enviado.slice(0, 10))}.</small>` : '<small>⏳ La escuela todavía no envía el citatorio.</small>'}
+    ${c.enviado ? `<small>📨 La escuela envió el citatorio a la familia por WhatsApp el ${fLarga(fLoc(c.enviado))}.</small>` : '<small>⏳ La escuela todavía no envía el citatorio.</small>'}
     ${(c.hist || []).map(h => `<br><small>• ${fLarga(h.fecha)}: ${RES[h.resultado] || ''}${h.acuerdos ? ` · ${esc(h.acuerdos)}` : ''}</small>`).join('')}</p>`;
   vista.innerHTML = `${cab()}<div class="tarjeta"><h2>Mis reportes (${L.length})</h2>
     ${L.length ? L.map(i => `<div class="rep-fila" style="display:block">
       <div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap"><span><b>${esc(i.alumno)}</b> <small>· ${i.grado}.° ${esc(i.grupo)} · ${fLarga(i.fecha)}</small></span><span class="envio ${i.estado === 'atendido' ? 'ok' : 'pend'}">${EST[i.estado] || 'Pendiente'}</span></div>
       <p style="margin:.3rem 0">${esc(i.hechos)}</p>
+      ${i.capturo ? '<small style="display:block;color:#6A5C4C">Lo registró la Subdirección con lo que usted le informó.</small>' : ''}
+      ${i.avisoFam ? `<small style="display:block">📲 La escuela informó a la familia por WhatsApp el ${fLarga(fLoc(i.avisoFam))}.</small>` : !i.cita && !i.confidencial ? '<small style="display:block;color:#6A5C4C">⏳ La escuela todavía no informa a la familia.</small>' : ''}
       ${visibles(i).length ? `<small>${visibles(i).map(a => '• ' + esc(anot(a))).join('<br>')}</small>` : ''}
       ${citaTxt(i.cita)}
       ${i.cita && !i.cita.resultado ? `<div class="fila-btn" style="margin-top:.4rem"><button type="button" class="btn oro chico" data-res="${i.id}">Anotar cómo fue la cita</button></div>` : ''}
