@@ -1614,7 +1614,7 @@ function panelDirectivo() {
   vista.querySelectorAll('[data-area]').forEach(b => b.addEventListener('click', () => { const a = b.dataset.area === 'cv'; if (a === cv) return; if (estado.pestana === 'reportes') soltarReporte(); estado.pestana = a ? 'cv-hoy' : 'tablero'; panelDirectivo(); }));
   vista.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => { if (estado.pestana === 'reportes' && b.dataset.t !== 'reportes') soltarReporte(); estado.pestana = b.dataset.t; panelDirectivo(); }));
   ({ tablero: () => tablero($('#panel')), revision: tabRevision, analisis: tabAnalisis, calendario: tabCalendario, responsables: () => vistaResponsables($('#panel')), alumnos: tabAlumnos, reportes: tabReportes, incidencias: tabIncidencias, maestros: tabMaestros, datos: tabDatos,
-    'cv-hoy': tabHoy, 'cv-avisar': tabAvisar, 'cv-citas': tabCitas, 'cv-agenda': tabDirectorio, 'cv-msj': tabMensajes, 'cv-links': tabLinks })[estado.pestana]();
+    'cv-hoy': tabHoy, 'cv-grupo': tabGrupo, 'cv-avisar': tabAvisar, 'cv-citas': tabCitas, 'cv-agenda': tabDirectorio, 'cv-msj': tabMensajes, 'cv-links': tabLinks })[estado.pestana]();
   if (foco) { const f = $('#filtro-alumnos'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
 }
 
@@ -2693,6 +2693,7 @@ async function cargarIncidencias() {
   try { const b = await getDocs(collectionGroup(db, 'inc')); deMaestros = b.docs.map(d => ({ id: d.id, _ruta: d.ref.path, ...d.data() })); incA.buzonOk = true; }
   catch (e) { console.warn('Reportes del link de los maestros: falta la regla', e); incA.buzonOk = false; }
   try { const b = await getDocs(collection(db, 'buzon')); incA.links = b.docs.map(d => ({ id: d.id, ...d.data() })).filter(l => l.activo); } catch { incA.links = []; }
+  setTimeout(() => syncTutores(), 50);
   incA.lista = [...s.docs.map(d => ({ id: d.id, ...d.data() })), ...deMaestros].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || nomInc(a).localeCompare(nomInc(b), 'es'));
 }
 function chipsTipos(t) { return (t || []).map(x => `<span class="etiqueta" style="background:#EEE7F7;color:#4B2A7A">${esc(x)}</span>`).join(' '); }
@@ -2768,7 +2769,7 @@ function ligarBotonesInc(cont, alVolver = null) {
 }
 // Después de guardar: recarga la lista y vuelve a donde estaba (la pestaña o el expediente abierto).
 async function trasGuardarInc(alVolver) {
-  incA.lista = null;
+  incA.lista = null; tutA.ult = 0;
   if (!alVolver) { if (esCV(estado.pestana)) { try { await cargarIncidencias(); } catch (e) { errorInc(e); return; } panelDirectivo(); } return; }
   try { await cargarIncidencias(); } catch (e) { errorInc(e); return; }
   if (esCV(estado.pestana)) panelDirectivo();
@@ -2941,13 +2942,13 @@ function modeloInc(gsel, d, h) {
 // Estado de un alumno para los maestros (columna «Atención y seguimiento de la escuela»): «2 atendidos, 1 en seguimiento» y las dos últimas acciones compartibles.
 const estAlTxt = a => [a.at && `${a.at} atendido${a.at === 1 ? '' : 's'}`, a.sg && `${a.sg} en seguimiento`, a.p && `${a.p} pendiente${a.p === 1 ? '' : 's'}`].filter(Boolean).join(', ');
 const hechoAlTxt = a => a.hecho.sort((x, y) => (x.fecha || '').localeCompare(y.fecha || '')).slice(-2).map(h => anotTxt(h, false));
-function concentradoInc() {
+function concentradoInc(pre = {}) {
   const fechas = (incA.lista || []).map(i => i.fecha).filter(Boolean).sort();
   abrirModal('Concentrado de incidencias', `
     <fieldset class="campo" style="border:0;padding:0"><legend style="font-weight:700">¿Para quién es?</legend>
-      <label class="check"><input type="radio" name="ci-modo" value="doc" checked> <b>Para todos los docentes</b>: quién tiene reportes, de qué tipo y quién los reportó, sin lo que pasó.</label>
-      <label class="check"><input type="radio" name="ci-modo" value="tut"> <b>Para el tutor de grupo</b>: un solo grupo, con el detalle de cada reporte y su firma de recibido.</label></fieldset>
-    <div class="rp-nums"><div class="campo"><label for="ci-g">Grupo</label><select id="ci-g"><option value="todos">Todos los grupos</option>${LISTA_GRUPOS.map(g => `<option value="${g.id}" ${incA.grupo === g.id ? 'selected' : ''}>${g.grado}.° ${g.grupo}</option>`).join('')}</select></div>
+      <label class="check"><input type="radio" name="ci-modo" value="doc" ${pre.modo === 'tut' ? '' : 'checked'}> <b>Para todos los docentes</b>: quién tiene reportes, de qué tipo y quién los reportó, sin lo que pasó.</label>
+      <label class="check"><input type="radio" name="ci-modo" value="tut" ${pre.modo === 'tut' ? 'checked' : ''}> <b>Para el tutor de grupo</b>: un solo grupo, con el detalle de cada reporte y su firma de recibido.</label></fieldset>
+    <div class="rp-nums"><div class="campo"><label for="ci-g">Grupo</label><select id="ci-g"><option value="todos">Todos los grupos</option>${LISTA_GRUPOS.map(g => `<option value="${g.id}" ${(pre.g || incA.grupo) === g.id ? 'selected' : ''}>${g.grado}.° ${g.grupo}</option>`).join('')}</select></div>
       <div class="campo"><label for="ci-d">Desde</label><input id="ci-d" type="date" value="${fechas[0] || hoyISO()}"></div><div class="campo"><label for="ci-h">Hasta</label><input id="ci-h" type="date" value="${hoyISO()}"></div></div>
     <p id="ci-tutor" class="ci-tutor" role="status"></p>
     <p class="ayuda">🔒 Los ${(incA.lista || []).filter(esConf).length} reportes confidenciales salen solo con el nombre del alumno y la leyenda «${TXT_CONF}»</p>
@@ -2967,13 +2968,14 @@ function concentradoInc() {
     if (modo === 'tut' && g === 'todos') { $('#ci-err').textContent = 'Para el tutor, elige un solo grupo.'; return null; }
     $('#ci-err').textContent = ''; return { modo, m: modeloInc(g, $('#ci-d').value, $('#ci-h').value) };
   };
-  $('#ci-ok').addEventListener('click', () => { const o = leer(); if (!o) return; cerrarModal(); imprimir(htmlConcentrado(o.m, o.modo)); });
-  $('#ci-wa').addEventListener('click', () => { const o = leer(); if (!o) return; open('https://wa.me/?text=' + encodeURIComponent(textoConcentrado(o.m, o.modo)), '_blank', 'noopener'); });
+  const alTutor = (o, via) => { if (o.modo === 'tut') registrarConc(o.m, via).then(() => { if (estado.pestana === 'cv-grupo') tabGrupo(); }); };
+  $('#ci-ok').addEventListener('click', () => { const o = leer(); if (!o) return; cerrarModal(); imprimir(htmlConcentrado(o.m, o.modo)); alTutor(o, 'imprimir'); });
+  $('#ci-wa').addEventListener('click', () => { const o = leer(); if (!o) return; open('https://wa.me/?text=' + encodeURIComponent(textoConcentrado(o.m, o.modo)), '_blank', 'noopener'); alTutor(o, 'whatsapp'); });
   $('#ci-pdf').addEventListener('click', async e => { const o = leer(); if (!o) return; if (typeof PDFLib === 'undefined') { aviso('No se pudo cargar la herramienta de PDF. Revisa la conexión.', true); return; }
     const b = e.target, tx = b.textContent; b.disabled = true; b.textContent = 'Generando…';
     try {
       if (!logoBytes) logoBytes = await fetch('logo-escuela.jpg').then(r => r.ok ? r.arrayBuffer() : null).catch(() => null);
-      const bytes = await pdfIncidencias(o.m, o.modo);
+      const bytes = await pdfIncidencias(o.m, o.modo); alTutor(o, 'pdf');
       const nombre = `Incidencias ${o.m.gsel === 'todos' ? 'todos los grupos' : o.m.gsel}${o.modo === 'tut' ? ' (tutor)' : ''}.pdf`;
       const f = new File([bytes], nombre, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: nombre }); } catch (x) { if (x.name !== 'AbortError') descargar(nombre, f); } }
@@ -3195,7 +3197,7 @@ function hojaContactos() {
    Cada mensaje que sale de aquí queda en contactos/{CURP}.msgs (historial por familia) y en el reporte
    (avisoFam / cita.enviado), así lo ven el maestro que reportó y el tutor en su concentrado.
    ====================================================================== */
-const CV_TABS = [['cv-hoy', 'Hoy'], ['incidencias', 'Reportes'], ['cv-avisar', 'Por avisar'], ['cv-citas', 'Citas'], ['cv-agenda', 'Agenda de papás'], ['cv-msj', 'Mensajes enviados'], ['reportes', 'Reporte general'], ['cv-links', 'Links del personal']];
+const CV_TABS = [['cv-hoy', 'Hoy'], ['incidencias', 'Reportes'], ['cv-grupo', 'Por grupo'], ['cv-avisar', 'Por avisar'], ['cv-citas', 'Citas'], ['cv-agenda', 'Agenda de papás'], ['cv-msj', 'Mensajes enviados'], ['reportes', 'Reporte general'], ['cv-links', 'Links del personal']];
 const esCV = t => CV_TABS.some(([k]) => k === t);
 const fLoc = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? String(iso).slice(0, 10) : d.toLocaleDateString('en-CA'); };
 const hLoc = iso => hora12(new Date(iso).toTimeString().slice(0, 5));
@@ -3383,6 +3385,179 @@ function tabLinks() {
     <p class="ayuda">Cada maestro, prefecto u otra persona del personal tiene su link para reportar desde su celular. En «Mis reportes» de su link ve en automático lo que hizo la escuela: si ya se informó a la familia, si se envió el citatorio, cómo fue la cita y el estado del reporte. Lo que tú registres con «me lo informó» a nombre de alguien con link también le aparece ahí.</p>
     <div class="fila-btn"><button type="button" class="btn oro" id="cv-lk">Ver y enviar los links</button></div></div>`;
   $('#cv-lk').addEventListener('click', () => linksMaestros());
+}
+
+/* ======================================================================
+   TUTORES DE GRUPO: vista «Por grupo», copia de los reportes en el link del tutor,
+   seguimiento que registra el tutor y concentrados entregados (con «Enterado»).
+   - buzon/{link del tutor}.tutorDe = '1G'
+   - buzon/{link}/grupo/{id}: copia de cada reporte del grupo (la escribe esta cuenta). El tutor ve todo, también lo grave.
+   - buzon/{link}/seg/{id}: lo que registra el tutor; aquí se pasa al seguimiento del reporte y se borra.
+   - buzon/{link}/conc/{id}: concentrados del tutor (entregado / enterado).
+   ====================================================================== */
+const REGLA_BUZON2 = `    // Links personales del personal (reportes) y de los tutores de grupo.
+    match /buzon/{token} {
+      allow get: if esDirectivo() || resource.data.activo == true;
+      allow list, write: if esDirectivo();
+      match /inc/{id} {
+        allow read: if esDirectivo() || get(/databases/$(database)/documents/buzon/$(token)).data.activo == true;
+        allow create: if get(/databases/$(database)/documents/buzon/$(token)).data.activo == true
+          && request.resource.data.token == token && request.resource.data.origen == 'maestro';
+        allow update: if esDirectivo() || (get(/databases/$(database)/documents/buzon/$(token)).data.activo == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cita', 'actualizado']));
+        allow delete: if esDirectivo();
+      }
+      // Copia de los reportes del grupo para el tutor (solo la escribe la Subdirección).
+      match /grupo/{id} {
+        allow read: if esDirectivo() || get(/databases/$(database)/documents/buzon/$(token)).data.activo == true;
+        allow write: if esDirectivo();
+      }
+      // Lo que registra el tutor («Registrar lo que hice»).
+      match /seg/{id} {
+        allow read: if esDirectivo() || get(/databases/$(database)/documents/buzon/$(token)).data.activo == true;
+        allow create: if get(/databases/$(database)/documents/buzon/$(token)).data.activo == true && request.resource.data.token == token;
+        allow update, delete: if esDirectivo();
+      }
+      // Concentrados entregados al tutor: el tutor solo puede marcar «Enterado».
+      match /conc/{id} {
+        allow read: if esDirectivo() || get(/databases/$(database)/documents/buzon/$(token)).data.activo == true;
+        allow write: if esDirectivo();
+        allow update: if get(/databases/$(database)/documents/buzon/$(token)).data.activo == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enterado']);
+      }
+    }
+    match /{ruta=**}/inc/{id} {
+      allow read: if esDirectivo();
+    }`;
+// El link del tutor: el del personal cuyo nombre coincide con el del tutor (tolera segundos nombres).
+function linkTutor(g) {
+  const nom = TUTORES[g]; if (!nom) return null;
+  const w = normal(nom).replace(/[.]/g, ' ').split(/\s+/).filter(x => x.length >= 3);
+  const L = (incA.links || []).filter(l => l.activo);
+  return L.find(l => normal(l.maestro) === normal(nom))
+    || L.find(l => { const m = normal(l.maestro); return w.every(x => m.includes(x)); })
+    || L.find(l => { const m = normal(l.maestro); return w.filter(x => m.includes(x)).length >= Math.min(3, w.length) && m.includes(w[0]); }) || null;
+}
+const hashTxt = s => { let h = 2166136261; for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
+// Lo que ve el tutor de cada reporte (todo, también lo grave y lo confidencial).
+function espejoInc(i) {
+  const x = { id: i.id, alumno: titulo(nomInc(i)), curp: i.curp || '', g: grpInc(i), fecha: i.fecha || '', hora: i.hora || '', asignatura: i.asignatura || '', tipos: i.tipos || [], gravedad: i.gravedad || '',
+    hechos: i.hechos || '', reporta: i.reporta || '', cargoReporta: i.cargoReporta || '', estado: estInc(i), confidencial: esConf(i), avisoFam: i.avisoFam || '',
+    cita: i.cita ? { fecha: i.cita.fecha || '', hora: i.cita.hora || '', con: i.cita.con || '', enviado: i.cita.enviado || '', resultado: i.cita.resultado || '', acuerdos: i.cita.acuerdos || '' } : null,
+    anots: anotInc(i).map(a => ({ fecha: a.fecha || '', quien: a.quien || '', que: a.que || '' })) };
+  return { ...x, h: hashTxt(JSON.stringify(x)) };
+}
+const tutA = { espejo: {}, ult: 0, error: null };
+async function syncTutores(forzar = false) {
+  if (tutA.corriendo || !incA.lista) return;
+  if (!forzar && Date.now() - tutA.ult < 90000) return;
+  tutA.corriendo = true; tutA.ult = Date.now(); let cambios = 0;
+  try {
+    const porG = {}; LISTA_GRUPOS.forEach(g => { const lk = linkTutor(g.id); if (lk) porG[g.id] = lk; });
+    for (const lk of incA.links || []) { const g = Object.keys(porG).find(k => porG[k].id === lk.id) || '';
+      if ((lk.tutorDe || '') !== g) { await updateDoc(doc(db, 'buzon', lk.id), { tutorDe: g }); lk.tutorDe = g; } }
+    for (const [g, lk] of Object.entries(porG)) {
+      // 1) Lo que registró el tutor pasa al seguimiento del reporte.
+      const ss = await getDocs(collection(db, 'buzon', lk.id, 'seg'));
+      for (const d of ss.docs) { const x = d.data(), i = incA.lista.find(z => z.id === x.inc);
+        if (i) { const an = { fecha: x.fecha || hoyISO(), quien: `${titulo(lk.maestro)} (tutor)`, que: [...(x.acciones || []), x.nota].filter(Boolean).join('. '), enterado: '', docentes: true, tutor: true };
+          const upd = { seg: [...segBase(i), an] }; if (estInc(i) === 'pendiente') upd.estado = 'seguimiento';
+          await updateDoc(refInc(i), upd); Object.assign(i, upd); cambios++; }
+        await deleteDoc(d.ref); }
+      // 2) Copia de los reportes del grupo en su link (solo lo que cambió).
+      if (!tutA.espejo[g]) { const ex = await getDocs(collection(db, 'buzon', lk.id, 'grupo')); tutA.espejo[g] = new Map(ex.docs.map(d => [d.id, d.data().h])); }
+      const M = tutA.espejo[g], vivos = new Set();
+      for (const i of incA.lista.filter(z => grpInc(z) === g)) { const e = espejoInc(i); vivos.add(i.id);
+        if (M.get(i.id) !== e.h) { await setDoc(doc(db, 'buzon', lk.id, 'grupo', i.id), e); M.set(i.id, e.h); } }
+      for (const id of [...M.keys()]) if (!vivos.has(id)) { await deleteDoc(doc(db, 'buzon', lk.id, 'grupo', id)); M.delete(id); }
+    }
+    tutA.error = null;
+  } catch (e) { console.warn('tutores', e); tutA.error = e; }
+  finally { tutA.corriendo = false; }
+  if (cambios && esCV(estado.pestana)) panelDirectivo();
+}
+function avisoReglasTutor() {
+  return `<div class="tarjeta" style="border-left:5px solid var(--rojo)"><h2>Falta un paso en Firebase</h2>
+    <p>Para que los tutores vean los reportes de su grupo en su link y registren su seguimiento, hay que cambiar un bloque de las reglas (solo una vez):</p>
+    <ol><li>Entra a <a href="https://console.firebase.google.com/project/raices-y-estrellas-est17/firestore/rules" target="_blank" rel="noopener">Firebase, Firestore, pestaña Reglas</a>.</li>
+      <li>Busca el bloque que empieza con <b>// Links personales de los maestros</b> y termina con <b>match /{ruta=**}/inc/{id}</b> y su llave de cierre.</li>
+      <li>Bórralo completo, pega en su lugar el bloque de abajo y toca <b>Publicar</b>.</li></ol>
+    <pre style="white-space:pre-wrap;background:#fff;border:1px solid var(--linea);border-radius:10px;padding:.7rem;font-size:.8rem;max-height:16rem;overflow:auto">${esc(REGLA_BUZON2)}</pre>
+    <div class="fila-btn"><button type="button" class="btn oro" id="rt-copiar">Copiar el bloque</button><button type="button" class="btn linea" id="rt-reint">Ya lo publiqué, reintentar</button></div></div>`;
+}
+function ligarAvisoReglas(p) {
+  $('#rt-copiar', p)?.addEventListener('click', async () => { try { await navigator.clipboard.writeText(REGLA_BUZON2); aviso('Bloque copiado.'); } catch { prompt('Copia el bloque:', REGLA_BUZON2); } });
+  $('#rt-reint', p)?.addEventListener('click', async () => { tutA.espejo = {}; await syncTutores(true); panelDirectivo(); });
+}
+// Historial de concentrados del tutor.
+async function registrarConc(m, via) {
+  const g = m.gsel, lk = linkTutor(g);
+  if (!lk) { aviso(`El tutor de ${gNomInc(g)} no tiene link personal: el concentrado no queda en el historial. Créalo en «Links del personal».`, true); return; }
+  const t = new Date().toISOString();
+  try { await addDoc(collection(db, 'buzon', lk.id, 'conc'), { g, d: m.d, h: m.h, ids: m.L.map(i => i.id), n: m.L.length, al: new Set(m.L.map(claveAl)).size, creado: t, via, entregado: via !== 'imprimir' ? t : '', enterado: '' }); }
+  catch (e) { console.warn(e); tutA.error = e; }
+}
+const semanaDe = f => { const [y, mo, d] = f.split('-').map(Number), x = new Date(y, mo - 1, d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x.toLocaleDateString('en-CA'); };
+const COL_GRAV = { leve: '#E5B92E', moderada: '#E07B24', grave: '#C0392B' };
+const tutorSiguio = (i, nom) => anotInc(i).some(a => a.tutor || (nom && normal(a.quien || '').includes(normal(nom).split(' ')[0]) && /tutor/i.test(a.quien || '')));
+function tabGrupo() {
+  if (!cvCargar('cv-grupo')) return;
+  syncTutores();
+  const g = incA.grupoVista || LISTA_GRUPOS[0].id, p = $('#panel'), nomT = TUTORES[g], lk = linkTutor(g);
+  const L = (incA.lista || []).filter(i => grpInc(i) === g), porAl = {};
+  L.forEach(i => (porAl[claveAl(i)] ||= []).push(i));
+  const act = estado.alumnos.filter(a => a.estado === 'activo' && `${a.grado}${a.grupo}` === g);
+  let filas = Object.entries(porAl).map(([k, I]) => ({ k, I: I.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')), nom: titulo(nomInc(I[0])) }));
+  if (incA.verTodos) act.forEach(a => { if (!porAl[a.curp]) filas.push({ k: a.curp, I: [], nom: titulo(nombreCompleto(a)) }); });
+  filas.sort((a, b) => b.I.length - a.I.length || a.nom.localeCompare(b.nom, 'es'));
+  const hoy = hoyISO(); let sem = [];
+  if (L.length) { let s = semanaDe(L.map(i => i.fecha).filter(Boolean).sort()[0]); const fin = semanaDe(hoy); while (s <= fin && sem.length < 60) { sem.push(s); s = sumarDias(s, 7); } }
+  const recorte = sem.length > 10; if (recorte) sem = sem.slice(-10);
+  const fam = I => I.length && I.every(i => avisadoInc(i) || i.noAvisar), tut = I => I.some(i => tutorSiguio(i, nomT));
+  const est = I => I.some(i => estInc(i) === 'pendiente') ? ['Pendiente', '#C0392B'] : I.some(i => estInc(i) === 'seguimiento') ? ['En seguimiento', '#B7791F'] : ['Atendido', '#2E7D4F'];
+  const semf = I => !I.length ? '' : I.length >= 4 || I.some(i => i.gravedad === 'grave') ? '🔴' : I.length >= 2 ? '🟡' : '🟢';
+  const tot = { n: L.length, p: L.filter(i => estInc(i) === 'pendiente').length, fam: L.filter(avisadoInc).length, tut: L.filter(i => tutorSiguio(i, nomT)).length };
+  p.innerHTML = `<div class="tarjeta"><div class="grupos" role="group" aria-label="Grupos">${LISTA_GRUPOS.map(x => `<button type="button" class="grupo" data-gv="${x.id}" aria-pressed="${x.id === g}">${x.grado}.° ${x.grupo}</button>`).join('')}</div>
+    <h2 style="margin:.6rem 0 .2rem">${gNomInc(g)}</h2>
+    <p style="margin:0">👤 Tutor(a): <b>${esc(nomT || 'sin tutor registrado')}</b> · Prefecto(a): ${esc(PREFECTO(+g[0]))} · ${lk ? '<span style="color:#2E7D4F">✓ tiene link: ve estos reportes y registra su seguimiento</span>' : '<b style="color:var(--rojo)">sin link personal</b> <button type="button" class="btn linea chico" id="gv-links">Crear su link</button>'}</p>
+    <div class="resumen" style="margin-top:.6rem"><div><b>${tot.n}</b>reportes</div><div><b>${tot.p}</b>pendientes</div><div><b>${tot.fam}</b>avisados a la familia</div><div><b>${tot.tut}</b>con seguimiento del tutor</div></div></div>
+  ${tutA.error && tutA.error.code === 'permission-denied' ? avisoReglasTutor() : ''}
+  <div class="tarjeta"><div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center"><h3 style="margin:0">Reportes por alumno y semana</h3>
+    <label class="check" style="margin:0"><input type="checkbox" id="gv-todos" ${incA.verTodos ? 'checked' : ''}> Ver también a los alumnos sin reportes</label></div>
+    <p class="ayuda" style="margin:.3rem 0">Cada punto es un reporte: <span style="color:${COL_GRAV.leve}">●</span> leve · <span style="color:${COL_GRAV.moderada}">●</span> moderado · <span style="color:${COL_GRAV.grave}">●</span> grave · <span style="color:#8A8072">●</span> sin gravedad. Toca un nombre o un punto para ver sus tarjetas.${recorte ? ' Se muestran las últimas 10 semanas.' : ''}</p>
+    ${filas.length ? `<div class="gv-wrap"><table class="gv"><thead><tr><th class="gv-al">Alumno</th>${sem.map(s => `<th title="Semana del ${fTab(s)}">${fTab(s).replace(/ de [a-z]+$/i, '')}</th>`).join('')}<th>Total</th><th>Familia</th><th>Tutor</th><th>Estado</th></tr></thead><tbody>
+      ${filas.map(f => { const e = est(f.I); return `<tr><td class="gv-al">${semf(f.I)} ${f.I.length ? `<button type="button" class="enlace-al" data-inc-exp="${esc(f.k)}">${esc(f.nom)}</button>` : esc(f.nom)}</td>
+        ${sem.map(s => `<td>${f.I.filter(i => i.fecha && semanaDe(i.fecha) === s).map(i => `<button type="button" class="gv-pt" data-inc-exp="${esc(f.k)}" title="${esc(fTab(i.fecha) + ' · ' + (esConf(i) ? 'Asunto confidencial' : (i.tipos || []).join(', ')))}" style="color:${COL_GRAV[i.gravedad] || '#8A8072'}">●</button>`).join('')}</td>`).join('')}
+        <td><b>${f.I.length || ''}</b></td><td>${f.I.length ? (fam(f.I) ? '✅' : '❌') : ''}</td><td>${f.I.length ? (tut(f.I) ? '✅' : '❌') : ''}</td><td>${f.I.length ? `<span style="color:${e[1]};font-weight:700">${e[0]}</span>` : ''}</td></tr>`; }).join('')}
+      </tbody></table></div>` : '<p class="vacio">Este grupo no tiene reportes.</p>'}</div>
+  <div class="tarjeta"><div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center"><h3 style="margin:0">Concentrados para el tutor</h3><button type="button" class="btn oro chico" id="gv-nuevo">Nuevo concentrado para el tutor</button></div>
+    <div id="gv-conc"><p class="cargando">Cargando…</p></div></div>`;
+  p.querySelectorAll('[data-gv]').forEach(b => b.addEventListener('click', () => { incA.grupoVista = b.dataset.gv; tabGrupo(); }));
+  $('#gv-todos').addEventListener('change', e => { incA.verTodos = e.target.checked; tabGrupo(); });
+  $('#gv-links')?.addEventListener('click', () => { estado.pestana = 'cv-links'; panelDirectivo(); });
+  $('#gv-nuevo').addEventListener('click', () => concentradoInc({ g, modo: 'tut' }));
+  ligarBotonesInc(p); ligarAvisoReglas(p);
+  // Historial de concentrados
+  const cc = $('#gv-conc');
+  if (!lk) { cc.innerHTML = '<p class="ayuda">El historial de concentrados se guarda en el link del tutor. Crea su link para llevar el control de entregas.</p>'; return; }
+  getDocs(collection(db, 'buzon', lk.id, 'conc')).then(sn => {
+    const C = sn.docs.map(d => ({ ref: d.ref, ...d.data() })).sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
+    const fh = iso => `${fTab(fLoc(iso))}, ${hLoc(iso)}`;
+    cc.innerHTML = C.length ? C.map((c, k) => `<div class="rep-fila" style="display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;align-items:center">
+      <span><b>Del ${fTab(c.d)} al ${fTab(c.h)}</b> <small>· ${c.n} reporte${c.n === 1 ? '' : 's'} de ${c.al || '—'} alumno${c.al === 1 ? '' : 's'} · hecho el ${fh(c.creado)}</small><br>
+        <small>${c.entregado ? `<b style="color:#2E7D4F">✓ Entregado al tutor</b> (${fh(c.entregado)})` : '<b style="color:var(--rojo)">No entregado al tutor</b>'}${c.enterado ? ` · <b style="color:#2E7D4F">El tutor marcó «Enterado»</b> (${fh(c.enterado)})` : c.entregado ? ' · el tutor aún no marca «Enterado»' : ''}</small></span>
+      <span class="fila-btn" style="margin:0"><button type="button" class="btn linea chico" data-cpdf="${k}">PDF</button><button type="button" class="btn linea chico" data-cimp="${k}">Imprimir</button><button type="button" class="btn ${c.entregado ? 'linea' : 'oro'} chico" data-cent="${k}">${c.entregado ? 'Marcar no entregado' : 'Marcar entregado'}</button></span></div>`).join('')
+      : '<p class="vacio">Todavía no hay concentrados para este tutor. Se guardan aquí al generarlos para el tutor.</p>';
+    const mod = c => { const m = modeloInc(g, c.d, c.h), S = new Set(c.ids || []); if (S.size) { m.L = m.L.filter(i => S.has(i.id)); m.grupos.forEach(x => { x.G = x.G.filter(i => S.has(i.id)); }); } return m; };
+    cc.querySelectorAll('[data-cimp]').forEach(b => b.addEventListener('click', () => imprimir(htmlConcentrado(mod(C[+b.dataset.cimp]), 'tut'))));
+    cc.querySelectorAll('[data-cpdf]').forEach(b => b.addEventListener('click', async () => { const c = C[+b.dataset.cpdf]; b.disabled = true;
+      try { if (!logoBytes) logoBytes = await fetch('logo-escuela.jpg').then(r => r.ok ? r.arrayBuffer() : null).catch(() => null);
+        const bytes = await pdfIncidencias(mod(c), 'tut'), nombre = `Incidencias ${g} (tutor) ${c.d} a ${c.h}.pdf`, f = new File([bytes], nombre, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: nombre }); } catch (x) { if (x.name !== 'AbortError') descargar(nombre, f); } } else descargar(nombre, f);
+      } catch (x) { console.error(x); aviso('No se pudo generar el PDF.', true); } b.disabled = false; }));
+    cc.querySelectorAll('[data-cent]').forEach(b => b.addEventListener('click', async () => { const c = C[+b.dataset.cent];
+      try { await updateDoc(c.ref, { entregado: c.entregado ? '' : new Date().toISOString() }); tabGrupo(); } catch (e) { errorInc(e); } }));
+  }).catch(e => { tutA.error = e; cc.innerHTML = e.code === 'permission-denied' ? '<p class="ayuda" style="color:var(--rojo)">Falta actualizar las reglas de Firebase (ver arriba).</p>' : '<p class="ayuda">No se pudo cargar el historial.</p>'; if (e.code === 'permission-denied' && !$('#rt-copiar')) { p.insertAdjacentHTML('afterbegin', avisoReglasTutor()); ligarAvisoReglas(p); } });
 }
 
 /* ======================================================================

@@ -51,9 +51,9 @@ async function iniciar() {
 function cab() {
   return `<div class="rp-alumno"><p class="rp-kicker">Reportes de incidencias · EST 17 Vespertino</p><h1>${esc(B.maestro)}</h1>${B.cargo && B.cargo !== 'Docente' ? `<p style="margin:0 0 .3rem;color:#fff"><b>${esc(B.cargo)}</b></p>` : ''}
     <p>Este link es solo tuyo: tus reportes llegan a la Subdirección con tu nombre. No lo compartas.</p></div>
-    <div class="fila-btn" style="margin:0 0 1rem"><button type="button" class="btn ${vistaAct === 'nuevo' ? 'oro' : 'linea'}" data-v="nuevo">Nuevo reporte</button><button type="button" class="btn ${vistaAct === 'mios' ? 'oro' : 'linea'}" data-v="mios">Mis reportes</button></div>`;
+    <div class="fila-btn" style="margin:0 0 1rem"><button type="button" class="btn ${vistaAct === 'nuevo' ? 'oro' : 'linea'}" data-v="nuevo">Nuevo reporte</button><button type="button" class="btn ${vistaAct === 'mios' ? 'oro' : 'linea'}" data-v="mios">Mis reportes</button>${B.tutorDe ? `<button type="button" class="btn ${vistaAct === 'grupo' ? 'oro' : 'linea'}" data-v="grupo">Mi grupo ${B.tutorDe[0]}.° ${B.tutorDe.slice(1)} (tutor)</button>` : ''}</div>`;
 }
-function pintar() { if (vistaAct === 'nuevo') formulario(); else misReportes(); }
+function pintar() { if (vistaAct === 'nuevo') formulario(); else if (vistaAct === 'grupo' && B.tutorDe) miGrupo(); else misReportes(); }
 function ligarCab() { vista.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => { vistaAct = b.dataset.v; pintar(); scrollTo(0, 0); })); }
 
 let alSel = null;
@@ -191,6 +191,70 @@ function resultado(i) {
     try { await updateDoc(doc(db, 'buzon', token, 'inc', i.id), { cita, actualizado: new Date().toISOString() }); aviso('Guardado.'); vistaAct = 'mios'; misReportes(); }
     catch (x) { console.error(x); err.textContent = 'No se pudo guardar. Revisa tu conexión.'; }
   });
+}
+
+// ---------------------------------------------------------------- Tutor de grupo
+// Los reportes de todo su grupo (de cualquier maestro, con todo el detalle), lo que hizo la escuela,
+// «Registrar lo que hice» y los concentrados que le manda la Subdirección, con «Enterado».
+const ACC_TUT = ['Platiqué con el alumno', 'Hablé con la familia', 'Lo canalicé a orientación o a trabajo social', 'Acordamos un compromiso'];
+let GR = null, filtroConc = null;
+async function miGrupo(recargar = true) {
+  if (recargar || !GR) {
+    vista.innerHTML = `${cab()}<div class="tarjeta"><p class="cargando">Cargando los reportes de tu grupo…</p></div>`; ligarCab();
+    try {
+      const [a, b, c] = await Promise.all([getDocs(collection(db, 'buzon', token, 'grupo')), getDocs(collection(db, 'buzon', token, 'conc')), getDocs(collection(db, 'buzon', token, 'seg'))]);
+      GR = { L: a.docs.map(d => ({ ...d.data(), id: d.id })), C: b.docs.map(d => ({ ref: d.ref, ...d.data() })).sort((x, y) => (y.creado || '').localeCompare(x.creado || '')), S: c.docs.map(d => d.data()) };
+    } catch (e) { console.error(e); vista.innerHTML = `${cab()}<div class="tarjeta"><h2>Mi grupo</h2><p>${e.code === 'permission-denied' ? 'La Subdirección está terminando de activar esta sección. Intenta más tarde.' : 'No se pudieron cargar los reportes. Revisa tu conexión.'}</p></div>`; ligarCab(); return; }
+  }
+  const g = B.tutorDe, S = new Set(filtroConc ? filtroConc.ids || [] : []);
+  const L = GR.L.filter(i => !filtroConc || S.has(i.id)), porAl = {};
+  L.forEach(i => (porAl[i.curp || i.alumno] ||= []).push(i));
+  const al = Object.values(porAl).map(I => I.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))).sort((a, b) => b.length - a.length || a[0].alumno.localeCompare(b[0].alumno, 'es'));
+  const pend = GR.L.filter(i => i.estado === 'pendiente').length, fh = iso => `${fLarga(fLoc(iso))}`;
+  const anot = a => `${a.fecha ? fLarga(a.fecha) + ': ' : ''}${a.que || 'Atención'}${a.quien ? ` (${a.quien})` : ''}`;
+  const misPend = id => GR.S.filter(x => x.inc === id);
+  vista.innerHTML = `${cab()}
+  <div class="tarjeta"><h2>Mi grupo: ${g[0]}.° ${esc(g.slice(1))}</h2>
+    <p class="ayuda">Como tutor ves todos los reportes de tu grupo, de cualquier maestro, con el detalle completo, y lo que ya hizo la escuela. Registra aquí lo que haces con cada alumno: le llega a la Subdirección.</p>
+    <p><b>${GR.L.length}</b> reportes · <b>${pend}</b> pendientes · <b>${Object.keys(porAl).length}</b> alumno${Object.keys(porAl).length === 1 ? '' : 's'}${filtroConc ? ' (filtrado)' : ''}</p></div>
+  ${GR.C.length ? `<div class="tarjeta"><h3 style="margin-top:0">Concentrados que te envió la Subdirección</h3>${GR.C.map((c, k) => `<div class="rep-fila" style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center">
+      <span><b>Del ${fLarga(c.d)} al ${fLarga(c.h)}</b> <small>· ${c.n} reporte${c.n === 1 ? '' : 's'} · ${fh(c.creado)}</small><br><small>${c.enterado ? `✓ Marcaste «Enterado» el ${fh(c.enterado)}` : '⏳ Falta que marques «Enterado»'}</small></span>
+      <span class="fila-btn" style="margin:0"><button type="button" class="btn linea chico" data-cver="${k}">${filtroConc === c ? 'Ver todos' : 'Ver sus reportes'}</button>${c.enterado ? '' : `<button type="button" class="btn oro chico" data-cent="${k}">Enterado</button>`}</span></div>`).join('')}</div>` : ''}
+  <div class="tarjeta"><h3 style="margin-top:0">Reportes por alumno</h3>
+    ${al.length ? al.map(I => `<details class="tg-al" ${I.some(i => i.estado === 'pendiente') ? 'open' : ''}><summary><b>${esc(I[0].alumno)}</b> · ${I.length} reporte${I.length === 1 ? '' : 's'}${I.some(i => i.gravedad === 'grave') ? ' · <b style="color:#B3261E">grave</b>' : ''}${I.some(i => i.estado === 'pendiente') ? ' · pendiente' : ''}</summary>
+      ${I.map(i => `<div class="rep-fila" style="display:block">
+        <div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap"><span><b>${fLarga(i.fecha)}</b>${i.hora ? ` · ${hora12(i.hora)}` : ''} <small>· ${esc((i.tipos || []).join(', ') || 'Reporte')}${i.gravedad ? ` · ${GRAV[i.gravedad] || i.gravedad}` : ''}</small></span><span class="envio ${i.estado === 'atendido' ? 'ok' : 'pend'}">${EST[i.estado] || 'Pendiente'}</span></div>
+        ${i.confidencial ? '<p style="margin:.3rem 0;color:#7A2E2E"><b>🔒 Confidencial:</b> trátalo personalmente con la Subdirección; no lo compartas con otros maestros ni con otros alumnos.</p>' : ''}
+        <p style="margin:.3rem 0">${esc(i.hechos)}</p>
+        <small>Reportó: ${esc(i.reporta || '—')}${i.cargoReporta && i.cargoReporta !== 'Docente' ? ` (${esc(i.cargoReporta)})` : ''}${i.asignatura ? ` · ${esc(i.asignatura)}` : ''}</small>
+        ${i.avisoFam ? `<br><small>📲 La escuela informó a la familia el ${fh(i.avisoFam)}.</small>` : ''}
+        ${i.cita ? `<br><small>📅 Cita con la familia: ${fLarga(i.cita.fecha)}, ${hora12(i.cita.hora)}${i.cita.enviado ? ' · citatorio enviado' : ' · falta citatorio'}${i.cita.resultado ? ` · ${RES[i.cita.resultado] || ''}${i.cita.acuerdos ? `: ${esc(i.cita.acuerdos)}` : ''}` : ''}</small>` : ''}
+        ${(i.anots || []).length ? `<div class="tg-seg"><b>Seguimiento:</b><br>${i.anots.map(a => '• ' + esc(anot(a))).join('<br>')}</div>` : ''}
+        ${misPend(i.id).map(x => `<div class="tg-seg tg-mio">• ${fLarga(x.fecha)}: ${esc([...(x.acciones || []), x.nota].filter(Boolean).join('. '))} <small>(tú · enviado a la Subdirección)</small></div>`).join('')}
+        <div class="fila-btn" style="margin-top:.4rem"><button type="button" class="btn oro chico" data-hice="${esc(i.id)}">Registrar lo que hice</button></div>
+        <div class="tg-form" id="tg-${esc(i.id)}" hidden></div></div>`).join('')}</details>`).join('') : '<p class="ayuda">Tu grupo no tiene reportes por ahora.</p>'}</div>`;
+  ligarCab();
+  vista.querySelectorAll('[data-cver]').forEach(b => b.addEventListener('click', () => { const c = GR.C[+b.dataset.cver]; filtroConc = filtroConc === c ? null : c; miGrupo(false); }));
+  vista.querySelectorAll('[data-cent]').forEach(b => b.addEventListener('click', async () => { const c = GR.C[+b.dataset.cent]; b.disabled = true;
+    try { const t = new Date().toISOString(); await updateDoc(c.ref, { enterado: t }); c.enterado = t; aviso('Listo: quedó como enterado.'); miGrupo(false); }
+    catch (e) { console.error(e); b.disabled = false; aviso('No se pudo guardar. Revisa tu conexión.', true); } }));
+  vista.querySelectorAll('[data-hice]').forEach(b => b.addEventListener('click', () => {
+    const i = GR.L.find(z => z.id === b.dataset.hice), box = document.getElementById('tg-' + i.id);
+    box.hidden = false; b.hidden = true;
+    box.innerHTML = `<fieldset class="rp-preg"><legend>¿Qué hiciste?</legend><div class="rp-conductas">${ACC_TUT.map(a => `<label class="check"><input type="checkbox" data-a="${esc(a)}"> ${esc(a)}</label>`).join('')}</div></fieldset>
+      <div class="rp-nums"><div class="campo"><label>Fecha</label><input type="date" data-f value="${hoyISO()}"></div></div>
+      <div class="campo"><label>Nota breve</label><textarea data-n rows="3" maxlength="800"></textarea><p class="rp-ej">💡 Ejemplo: Platiqué con él al final de la clase; se comprometió a guardar el celular en la mochila. Lo reviso el viernes.</p></div>
+      <p class="error" data-e role="alert"></p><div class="fila-btn"><button type="button" class="btn oro chico" data-ok>Guardar</button><button type="button" class="btn linea chico" data-x>Cancelar</button></div>`;
+    box.querySelector('[data-x]').addEventListener('click', () => { box.hidden = true; b.hidden = false; });
+    box.querySelector('[data-ok]').addEventListener('click', async ev => {
+      const acc = [...box.querySelectorAll('[data-a]:checked')].map(x => x.dataset.a), nota = box.querySelector('[data-n]').value.trim(), fecha = box.querySelector('[data-f]').value || hoyISO();
+      if (!acc.length && nota.length < 5) { box.querySelector('[data-e]').textContent = 'Marca qué hiciste o escribe una nota.'; return; }
+      ev.target.disabled = true; ev.target.textContent = 'Guardando…';
+      const x = { token, inc: i.id, alumno: i.alumno, acciones: acc, nota, fecha, creado: new Date().toISOString() };
+      try { await addDoc(collection(db, 'buzon', token, 'seg'), x); GR.S.push(x); aviso('Guardado: le llegó a la Subdirección.'); miGrupo(false); }
+      catch (e) { console.error(e); ev.target.disabled = false; ev.target.textContent = 'Guardar'; box.querySelector('[data-e]').textContent = 'No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.'; }
+    });
+  }));
 }
 
 iniciar();

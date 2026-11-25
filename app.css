@@ -496,3 +496,16 @@ button.chip-est{cursor:pointer;min-height:40px}
 @media (max-width:520px){.areas button{font-size:.95rem;padding:.6rem .7rem}.areas button small{display:none}}
 .ci-tutor{margin:.2rem 0 .6rem;padding:.55rem .75rem;border-radius:12px;background:#FFF6DD;border:1px solid #E7CF8F}
 .ci-tutor:empty{display:none}
+/* Vista por grupo */
+.gv-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:.4rem}
+.gv{border-collapse:collapse;min-width:100%;font-size:.88rem}
+.gv th,.gv td{border-bottom:1px solid var(--linea);padding:.35rem .4rem;text-align:center;white-space:nowrap}
+.gv thead th{position:sticky;top:0;background:#FBF6EA;font-size:.78rem}
+.gv .gv-al{text-align:left;position:sticky;left:0;background:#FFFDF7;z-index:1;white-space:normal;min-width:10rem}
+.gv-pt{background:none;border:0;padding:0 1px;font-size:1.15rem;line-height:1;cursor:pointer}
+/* Link del tutor: mi grupo */
+.tg-al{border-top:1px solid var(--linea);padding:.4rem 0}
+.tg-al>summary{cursor:pointer;padding:.3rem 0;font-size:1.02rem}
+.tg-seg{margin:.35rem 0 0;padding:.35rem .55rem;border-radius:8px;background:#F1F5FB;font-size:.88rem}
+.tg-mio{background:#EAF6EE}
+.tg-form{margin-top:.5rem;padding:.6rem;border:1px dashed var(--linea);border-radius:10px}
