@@ -2,7 +2,7 @@
    Se abre con el link que comparte la Dirección: reporte.html?r=CLAVE. No pide contraseña:
    el link solo abre ese reporte, solo deja escribir la parte de una asignatura y deja de funcionar cuando la Dirección lo cierra. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const app = initializeApp({
   apiKey: "AIzaSyB0IzYArTNquMl5-zphxdW9G4wcYmPgekA",
@@ -12,7 +12,8 @@ const app = initializeApp({
   messagingSenderId: "666765040335",
   appId: "1:666765040335:web:a5bae72abc2dbd1b7035ba"
 }, 'reporte');
-const db = getFirestore(app);
+// Long polling automático: algunas redes (datos móviles, wifi escolar) cortan la conexión normal y el envío se quedaba colgado.
+const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 
 const $ = s => document.querySelector(s);
 const vista = $('#vista');
@@ -156,9 +157,14 @@ async function enviar() {
   if (faltan.length) { err.textContent = 'Falta: ' + faltan.join(', ') + '.'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
   err.textContent = '';
   const b = $('#rp-enviar'); b.disabled = true; b.textContent = 'Enviando…';
+  guardarLocal(M.id, d);
+  const conTiempo = (pr, ms) => Promise.race([pr, new Promise((_, no) => setTimeout(() => no(Object.assign(new Error('La conexión tardó demasiado.'), { code: 'tiempo' })), ms))]);
   try {
-    await setDoc(doc(db, 'reportes', token, 'respuestas', M.id), { ...d, materia: M.materia, enviado: serverTimestamp() });
-    await updateDoc(doc(db, 'reportes', token), { [`enviados.${M.id}`]: true }).catch(() => {});
+    await conTiempo(setDoc(doc(db, 'reportes', token, 'respuestas', M.id), { ...d, materia: M.materia, enviado: serverTimestamp() }), 25000);
+    await conTiempo(updateDoc(doc(db, 'reportes', token), { [`enviados.${M.id}`]: true }), 15000).catch(e => console.warn(e));
+    // Comprobación: se vuelve a leer del servidor que la Dirección ya la tiene marcada.
+    const chk = await conTiempo(getDocFromServer(doc(db, 'reportes', token)), 15000).catch(() => null);
+    if (chk && chk.exists() && !(chk.data().enviados || {})[M.id]) await updateDoc(doc(db, 'reportes', token), { [`enviados.${M.id}`]: true }).catch(() => {});
     R.enviados = { ...(R.enviados || {}), [M.id]: true };
     guardarLocal(M.id, d);
     vista.innerHTML = `${cabecera()}<div class="tarjeta rp-msj"><h2>✓ ¡Gracias! Tu parte de ${esc(M.materia)} quedó enviada.</h2>
@@ -170,7 +176,11 @@ async function enviar() {
   } catch (e) {
     console.error(e);
     b.disabled = false; b.textContent = 'Enviar mi parte';
-    err.textContent = 'No se pudo enviar. Revisa tu conexión e inténtalo otra vez; lo que escribiste sigue guardado en este teléfono. Si el problema sigue, quizá la Dirección ya cerró el reporte.';
+    const c = e && e.code || '';
+    err.textContent = c === 'permission-denied' ? 'No se pudo enviar: este reporte ya está cerrado o el link es de un reporte anterior. Pide a la Dirección el link más reciente. (Código: permiso)'
+      : c === 'tiempo' || c === 'unavailable' ? 'No se pudo enviar: el internet de este teléfono no está llegando. Lo que escribiste quedó guardado aquí; cambia a datos o a otra red wifi y vuelve a tocar «Enviar mi parte». (Código: conexión)'
+      : `No se pudo enviar. Lo que escribiste quedó guardado en este teléfono; vuelve a intentarlo. Si sigue, toma captura de este mensaje y mándasela a la Dirección. (Código: ${c || (e && e.message) || 'desconocido'})`;
+    err.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 }
 
