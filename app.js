@@ -2652,7 +2652,7 @@ const RES_CITA = { asistio: 'asistió', noasistio: 'no asistió', reprogramada: 
 const hora12 = h => { if (!h) return ''; const [H, M] = h.split(':').map(Number); return `${((H + 11) % 12) + 1}:${String(M).padStart(2, '0')} ${H < 12 ? 'a. m.' : 'p. m.'}`; };
 // La cita con la familia (del link del maestro o de la Subdirección) también cuenta como seguimiento.
 function citaAnots(i) {
-  const fam = i.avisoFam ? [{ fecha: fLoc(i.avisoFam), quien: 'Escuela', que: 'Se informó a la familia por WhatsApp', enterado: '', docentes: true }] : [];
+  const fam = i.avisoFam ? [{ fecha: fLoc(i.avisoFam), quien: 'Escuela', que: `Se informó a la familia ${i.avisoMedio ? i.avisoMedio.toLowerCase() : 'por WhatsApp'}${i.avisoNota ? `: ${i.avisoNota}` : ''}`, enterado: '', docentes: true }] : [];
   const c = i.cita; if (!c) return fam;
   const out = (c.hist || []).map(h => ({ fecha: h.fecha, quien: c.con || '', que: `Cita con la familia${h.cita ? ` del ${fTab(h.cita)}` : ''}: ${RES_CITA[h.resultado] || ''}${h.acuerdos ? `. Acuerdos: ${h.acuerdos}` : ''}`, enterado: '', docentes: true }));
   out.push(...fam);
@@ -3502,6 +3502,61 @@ async function registrarConc(m, via) {
 const semanaDe = f => { const [y, mo, d] = f.split('-').map(Number), x = new Date(y, mo - 1, d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x.toLocaleDateString('en-CA'); };
 const COL_GRAV = { leve: '#E5B92E', moderada: '#E07B24', grave: '#C0392B' };
 const tutorSiguio = (i, nom) => anotInc(i).some(a => a.tutor || (nom && normal(a.quien || '').includes(normal(nom).split(' ')[0]) && /tutor/i.test(a.quien || '')));
+// ---- Atajos de la tabla «Por grupo»: un reporte, la familia y el tutor, sin salir de la vista.
+const repsDe = k => (incA.lista || []).filter(i => claveAl(i) === k).sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+const volverGrupo = () => { if (estado.pestana === 'cv-grupo') tabGrupo(); };
+function verRepGrupo(id) {
+  const i = (incA.lista || []).find(z => z.id === id); if (!i) return;
+  abrirModal('Reporte', filaInc(i));
+  ligarBotonesInc($('#modal-cuerpo'), () => { verRepGrupo(id); volverGrupo(); });
+}
+const MEDIOS = ['En persona', 'Por llamada', 'Por WhatsApp (fuera de la plataforma)', 'Con citatorio en papel', 'En reunión de padres'];
+function resolverFamilia(k) {
+  const I = repsDe(k); if (!I.length) return;
+  const nom = titulo(nomInc(I[0])), falta = I.filter(i => !avisadoInc(i) && !i.noAvisar), listos = I.filter(i => avisadoInc(i) || i.noAvisar);
+  abrirModal(`Familia de ${nom}`, `<p class="ayuda">Reportes sin aviso a la familia. Si ya se avisó antes del sistema, regístralo con la fecha y el medio; si no amerita aviso, márcalo.</p>
+    ${falta.length ? falta.map(i => `<div class="rep-fila" style="display:block"><b>${fCorta(i.fecha)}</b> <small>· ${esc((i.tipos || []).join(', ') || 'Reporte')} · ${estTxt(i)}</small><p style="margin:.2rem 0">${esc((i.hechos || '').slice(0, 220))}</p>
+      <div class="fila-btn" style="margin:.2rem 0"><button type="button" class="btn oro chico" data-rf-env="${i.id}">📲 Enviar ahora</button><button type="button" class="btn linea chico" data-rf-antes="${i.id}">Ya se avisó antes</button><button type="button" class="btn linea chico" data-rf-no="${i.id}">No requiere aviso</button></div>
+      <div id="rf-f-${i.id}" hidden class="tg-form"><div class="rp-nums"><div class="campo"><label>¿Cuándo?</label><input type="date" data-rf-fecha value="${i.fecha || hoyISO()}"></div>
+        <div class="campo"><label>¿Cómo?</label><select data-rf-medio>${MEDIOS.map(x => `<option>${esc(x)}</option>`).join('')}</select></div></div>
+        <div class="campo"><label>Nota (opcional)</label><input data-rf-nota maxlength="300" placeholder="Ej.: Habló la mamá; se comprometió a revisar la mochila."></div>
+        <div class="fila-btn"><button type="button" class="btn oro chico" data-rf-ok="${i.id}">Guardar</button></div></div></div>`).join('') : '<p>✅ Todos sus reportes ya tienen aviso a la familia.</p>'}
+    ${listos.length ? `<details style="margin-top:.6rem"><summary>Ya resueltos (${listos.length})</summary>${listos.map(i => `<p style="margin:.3rem 0"><b>${fCorta(i.fecha)}</b> · ${i.noAvisar ? 'No requiere aviso' : i.cita?.enviado && !i.avisoFam ? 'Citatorio enviado' : `Avisada ${i.avisoMedio ? i.avisoMedio.toLowerCase() : 'por WhatsApp'} el ${fTab(fLoc(i.avisoFam))}`} <button type="button" class="btn-texto" data-rf-des="${i.id}">deshacer</button></p>`).join('')}</details>` : ''}`);
+  const q = s => document.querySelector(s), bus = id => I.find(z => z.id === id);
+  document.querySelectorAll('[data-rf-env]').forEach(b => b.addEventListener('click', () => enviarAFamilia([bus(b.dataset.rfEnv)], () => resolverFamilia(k))));
+  document.querySelectorAll('[data-rf-antes]').forEach(b => b.addEventListener('click', () => { q('#rf-f-' + b.dataset.rfAntes).hidden = false; b.hidden = true; }));
+  document.querySelectorAll('[data-rf-ok]').forEach(b => b.addEventListener('click', async () => {
+    const i = bus(b.dataset.rfOk), f = q('#rf-f-' + i.id), fecha = f.querySelector('[data-rf-fecha]').value || hoyISO();
+    const upd = { avisoFam: new Date(fecha + 'T12:00:00').toISOString(), avisoMedio: f.querySelector('[data-rf-medio]').value, avisoNota: f.querySelector('[data-rf-nota]').value.trim(), noAvisar: false };
+    b.disabled = true; try { await updateDoc(refInc(i), upd); Object.assign(i, upd); bitacora('aviso a la familia registrado', nomInc(i)); aviso('Registrado.'); resolverFamilia(k); volverGrupo(); } catch (e) { errorInc(e); } }));
+  document.querySelectorAll('[data-rf-no]').forEach(b => b.addEventListener('click', async () => { const i = bus(b.dataset.rfNo);
+    try { await updateDoc(refInc(i), { noAvisar: true }); i.noAvisar = true; resolverFamilia(k); volverGrupo(); } catch (e) { errorInc(e); } }));
+  document.querySelectorAll('[data-rf-des]').forEach(b => b.addEventListener('click', async () => { const i = bus(b.dataset.rfDes);
+    if (!confirm('¿Quitar el registro de aviso de este reporte? Volverá a «Por avisar».')) return;
+    try { await updateDoc(refInc(i), { noAvisar: false, avisoFam: '', avisoMedio: '', avisoNota: '' }); Object.assign(i, { noAvisar: false, avisoFam: '', avisoMedio: '', avisoNota: '' }); resolverFamilia(k); volverGrupo(); } catch (e) { errorInc(e); } }));
+}
+const ACC_TUT_D = ['Platicó con el alumno', 'Habló con la familia', 'Lo canalizó a orientación o a trabajo social', 'Acordaron un compromiso'];
+function resolverTutor(k) {
+  const I = repsDe(k); if (!I.length) return;
+  const g = grpInc(I[0]), nomT = TUTORES[g] || 'Tutor', nom = titulo(nomInc(I[0]));
+  abrirModal(`Seguimiento del tutor · ${nom}`, `<p class="ayuda">Lo normal es que ${esc(nomT)} lo registre desde su link. Si ya le dio seguimiento antes del sistema o te lo contó, regístralo aquí a su nombre.</p>
+    ${I.map(i => { const hechos = anotInc(i).filter(a => a.tutor || /\(tutor\)/.test(a.quien || '')); return `<div class="rep-fila" style="display:block"><b>${fCorta(i.fecha)}</b> <small>· ${esc((i.tipos || []).join(', ') || 'Reporte')} · ${estTxt(i)}</small><p style="margin:.2rem 0">${esc((i.hechos || '').slice(0, 200))}</p>
+      ${hechos.map(a => `<p class="tg-seg">• ${fTab(a.fecha)}: ${esc(a.que)}</p>`).join('')}
+      <button type="button" class="btn ${hechos.length ? 'linea' : 'oro'} chico" data-rt="${i.id}">Registrar seguimiento del tutor</button>
+      <div id="rt-f-${i.id}" hidden class="tg-form"><div class="rp-conductas">${ACC_TUT_D.map(a => `<label class="check"><input type="checkbox" data-rt-a="${esc(a)}"> ${esc(a)}</label>`).join('')}</div>
+        <div class="rp-nums"><div class="campo"><label>Fecha</label><input type="date" data-rt-f value="${hoyISO()}"></div></div>
+        <div class="campo"><label>Nota</label><input data-rt-n maxlength="400" placeholder="Ej.: Habló con el papá en la junta; quedaron en revisar tareas."></div>
+        <label class="check"><input type="checkbox" data-rt-at> Marcar el reporte como atendido</label>
+        <div class="fila-btn"><button type="button" class="btn oro chico" data-rt-ok="${i.id}">Guardar</button></div></div></div>`; }).join('')}`);
+  const q = s => document.querySelector(s), bus = id => I.find(z => z.id === id);
+  document.querySelectorAll('[data-rt]').forEach(b => b.addEventListener('click', () => { q('#rt-f-' + b.dataset.rt).hidden = false; b.hidden = true; }));
+  document.querySelectorAll('[data-rt-ok]').forEach(b => b.addEventListener('click', async () => {
+    const i = bus(b.dataset.rtOk), f = q('#rt-f-' + i.id), acc = [...f.querySelectorAll('[data-rt-a]:checked')].map(x => x.dataset.rtA), nota = f.querySelector('[data-rt-n]').value.trim();
+    if (!acc.length && nota.length < 4) { aviso('Marca qué hizo el tutor o escribe una nota.', true); return; }
+    const an = { fecha: f.querySelector('[data-rt-f]').value || hoyISO(), quien: `${nomT} (tutor)`, que: [...acc, nota].filter(Boolean).join('. '), enterado: '', docentes: true, tutor: true };
+    const upd = { seg: [...segBase(i), an] }; if (f.querySelector('[data-rt-at]').checked) upd.estado = 'atendido'; else if (estInc(i) === 'pendiente') upd.estado = 'seguimiento';
+    b.disabled = true; try { await updateDoc(refInc(i), upd); Object.assign(i, upd); tutA.ult = 0; syncTutores(true); aviso('Registrado a nombre del tutor.'); resolverTutor(k); volverGrupo(); } catch (e) { errorInc(e); } }));
+}
 function tabGrupo() {
   if (!cvCargar('cv-grupo')) return;
   syncTutores();
@@ -3529,8 +3584,8 @@ function tabGrupo() {
     <p class="ayuda" style="margin:.3rem 0">Cada punto es un reporte: <span style="color:${COL_GRAV.leve}">●</span> leve · <span style="color:${COL_GRAV.moderada}">●</span> moderado · <span style="color:${COL_GRAV.grave}">●</span> grave · <span style="color:#8A8072">●</span> sin gravedad. Toca un nombre o un punto para ver sus tarjetas.${recorte ? ' Se muestran las últimas 10 semanas.' : ''}</p>
     ${filas.length ? `<div class="gv-wrap"><table class="gv"><thead><tr><th class="gv-al">Alumno</th>${sem.map(s => `<th title="Semana del ${fTab(s)}">${fTab(s).replace(/ de [a-z]+$/i, '')}</th>`).join('')}<th>Total</th><th>Familia</th><th>Tutor</th><th>Estado</th></tr></thead><tbody>
       ${filas.map(f => { const e = est(f.I); return `<tr><td class="gv-al">${semf(f.I)} ${f.I.length ? `<button type="button" class="enlace-al" data-inc-exp="${esc(f.k)}">${esc(f.nom)}</button>` : esc(f.nom)}</td>
-        ${sem.map(s => `<td>${f.I.filter(i => i.fecha && semanaDe(i.fecha) === s).map(i => `<button type="button" class="gv-pt" data-inc-exp="${esc(f.k)}" title="${esc(fTab(i.fecha) + ' · ' + (esConf(i) ? 'Asunto confidencial' : (i.tipos || []).join(', ')))}" style="color:${COL_GRAV[i.gravedad] || '#8A8072'}">●</button>`).join('')}</td>`).join('')}
-        <td><b>${f.I.length || ''}</b></td><td>${f.I.length ? (fam(f.I) ? '✅' : '❌') : ''}</td><td>${f.I.length ? (tut(f.I) ? '✅' : '❌') : ''}</td><td>${f.I.length ? `<span style="color:${e[1]};font-weight:700">${e[0]}</span>` : ''}</td></tr>`; }).join('')}
+        ${sem.map(s => `<td>${f.I.filter(i => i.fecha && semanaDe(i.fecha) === s).map(i => `<button type="button" class="gv-pt" data-inc-exp="${esc(f.k)}" data-gv-inc="${esc(i.id)}" title="${esc(`${fTab(i.fecha)} · ${(i.tipos || []).join(', ') || 'Reporte'}${i.gravedad ? ' · ' + i.gravedad : ''} · ${estTxt(i)}\n${(i.hechos || '').slice(0, 160)}`)}" style="color:${COL_GRAV[i.gravedad] || '#8A8072'}">●</button>`).join('')}</td>`).join('')}
+        <td><b>${f.I.length || ''}</b></td><td>${f.I.length ? `<button type="button" class="gv-x" data-gv-fam="${esc(f.k)}" title="${fam(f.I) ? 'Familia avisada. Toca para ver.' : 'Falta avisar a la familia. Toca para resolverlo.'}">${fam(f.I) ? '✅' : '❌'}</button>` : ''}</td><td>${f.I.length ? `<button type="button" class="gv-x" data-gv-tut="${esc(f.k)}" title="${tut(f.I) ? 'El tutor ya dio seguimiento. Toca para ver.' : 'Falta el seguimiento del tutor. Toca para registrarlo.'}">${tut(f.I) ? '✅' : '❌'}</button>` : ''}</td><td>${f.I.length ? `<span style="color:${e[1]};font-weight:700">${e[0]}</span>` : ''}</td></tr>`; }).join('')}
       </tbody></table></div>` : '<p class="vacio">Este grupo no tiene reportes.</p>'}</div>
   <div class="tarjeta"><div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center"><h3 style="margin:0">Concentrados para el tutor</h3><button type="button" class="btn oro chico" id="gv-nuevo">Nuevo concentrado para el tutor</button></div>
     <div id="gv-conc"><p class="cargando">Cargando…</p></div></div>`;
@@ -3542,6 +3597,10 @@ function tabGrupo() {
       await updateDoc(doc(db, 'buzon', id), { tutorDe: g, tutorFijo: true }); const l = incA.links.find(x => x.id === id); l.tutorDe = g; l.tutorFijo = true;
       delete tutA.espejo[g]; await syncTutores(true); aviso('Listo: ese link ya es el del tutor del grupo.'); tabGrupo(); } catch (e) { errorInc(e); } });
   $('#gv-nuevo').addEventListener('click', () => concentradoInc({ g, modo: 'tut' }));
+  p.querySelectorAll('.gv-pt').forEach(b => b.removeAttribute('data-inc-exp'));
+  p.querySelectorAll('[data-gv-inc]').forEach(b => b.addEventListener('click', () => verRepGrupo(b.dataset.gvInc)));
+  p.querySelectorAll('[data-gv-fam]').forEach(b => b.addEventListener('click', () => resolverFamilia(b.dataset.gvFam)));
+  p.querySelectorAll('[data-gv-tut]').forEach(b => b.addEventListener('click', () => resolverTutor(b.dataset.gvTut)));
   ligarBotonesInc(p); ligarAvisoReglas(p);
   // Historial de concentrados
   const cc = $('#gv-conc');

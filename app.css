@@ -509,3 +509,5 @@ button.chip-est{cursor:pointer;min-height:40px}
 .tg-seg{margin:.35rem 0 0;padding:.35rem .55rem;border-radius:8px;background:#F1F5FB;font-size:.88rem}
 .tg-mio{background:#EAF6EE}
 .tg-form{margin-top:.5rem;padding:.6rem;border:1px dashed var(--linea);border-radius:10px}
+.gv-x{background:none;border:0;padding:.1rem .3rem;font-size:1.05rem;cursor:pointer;border-radius:6px}
+.gv-x:hover,.gv-x:focus{background:#F3EBD8}
