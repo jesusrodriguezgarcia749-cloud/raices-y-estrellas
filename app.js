@@ -2949,10 +2949,19 @@ function concentradoInc() {
       <label class="check"><input type="radio" name="ci-modo" value="tut"> <b>Para el tutor de grupo</b>: un solo grupo, con el detalle de cada reporte y su firma de recibido.</label></fieldset>
     <div class="rp-nums"><div class="campo"><label for="ci-g">Grupo</label><select id="ci-g"><option value="todos">Todos los grupos</option>${LISTA_GRUPOS.map(g => `<option value="${g.id}" ${incA.grupo === g.id ? 'selected' : ''}>${g.grado}.° ${g.grupo}</option>`).join('')}</select></div>
       <div class="campo"><label for="ci-d">Desde</label><input id="ci-d" type="date" value="${fechas[0] || hoyISO()}"></div><div class="campo"><label for="ci-h">Hasta</label><input id="ci-h" type="date" value="${hoyISO()}"></div></div>
+    <p id="ci-tutor" class="ci-tutor" role="status"></p>
     <p class="ayuda">🔒 Los ${(incA.lista || []).filter(esConf).length} reportes confidenciales salen solo con el nombre del alumno y la leyenda «${TXT_CONF}»</p>
     <p id="ci-err" class="error" role="alert"></p>
     <div class="fila-btn"><button type="button" class="btn oro" id="ci-ok">Imprimir o guardar PDF</button><button type="button" class="btn linea" id="ci-pdf">Compartir PDF</button><button type="button" class="btn linea" id="ci-wa">Mandar como mensaje de WhatsApp</button></div>
     <p class="ayuda">«Compartir PDF», en el celular, abre el menú de compartir para mandarlo directo por WhatsApp; en la computadora lo descarga para que lo adjuntes.</p>`);
+  // Tutor del grupo elegido, para saber a quién mandárselo.
+  const tutorTxt = () => { const g = $('#ci-g').value, t = $('#ci-tutor');
+    if (g === 'todos') { t.innerHTML = ''; return; }
+    const nom = TUTORES[g], lk = nom ? (incA.links || []).find(l => normal(l.maestro) === normal(nom)) : null;
+    t.innerHTML = `👤 Tutor(a) de ${esc(gNomInc(g))}: <b>${esc(nom || 'sin tutor registrado')}</b>${nom ? ` · Prefecto(a): ${esc(PREFECTO(+g[0]))}` : ' (regístralo en Maestros, «Tutor de»)'}${lk ? ' · tiene su link personal' : ''}`; };
+  $('#ci-g').addEventListener('change', () => { $('#ci-err').textContent = ''; tutorTxt(); });
+  document.querySelectorAll('[name=ci-modo]').forEach(r => r.addEventListener('change', () => { $('#ci-err').textContent = ''; }));
+  tutorTxt();
   const leer = () => {
     const modo = document.querySelector('[name=ci-modo]:checked').value, g = $('#ci-g').value;
     if (modo === 'tut' && g === 'todos') { $('#ci-err').textContent = 'Para el tutor, elige un solo grupo.'; return null; }

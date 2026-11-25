@@ -494,3 +494,5 @@ button.chip-est{cursor:pointer;min-height:40px}
 .areas button[aria-pressed="true"] small{color:var(--noche)}
 .enlace-al{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer;text-align:left}
 @media (max-width:520px){.areas button{font-size:.95rem;padding:.6rem .7rem}.areas button small{display:none}}
+.ci-tutor{margin:.2rem 0 .6rem;padding:.55rem .75rem;border-radius:12px;background:#FFF6DD;border:1px solid #E7CF8F}
+.ci-tutor:empty{display:none}
