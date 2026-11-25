@@ -3434,9 +3434,11 @@ function linkTutor(g) {
   const nom = TUTORES[g]; if (!nom) return null;
   const w = normal(nom).replace(/[.]/g, ' ').split(/\s+/).filter(x => x.length >= 3);
   const L = (incA.links || []).filter(l => l.activo);
+  const fijo = L.find(l => l.tutorDe === g && l.tutorFijo); if (fijo) return fijo;
   return L.find(l => normal(l.maestro) === normal(nom))
     || L.find(l => { const m = normal(l.maestro); return w.every(x => m.includes(x)); })
-    || L.find(l => { const m = normal(l.maestro); return w.filter(x => m.includes(x)).length >= Math.min(3, w.length) && m.includes(w[0]); }) || null;
+    || L.find(l => { const m = normal(l.maestro); return w.filter(x => m.includes(x)).length >= Math.min(3, w.length) && m.includes(w[0]); })
+    || L.find(l => { const m = normal(l.maestro).split(/\s+/); return w.filter(x => m.includes(x)).length >= 2; }) || null;
 }
 const hashTxt = s => { let h = 2166136261; for (let k = 0; k < s.length; k++) { h ^= s.charCodeAt(k); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
 // Lo que ve el tutor de cada reporte (todo, también lo grave y lo confidencial).
@@ -3455,7 +3457,7 @@ async function syncTutores(forzar = false) {
   try {
     const porG = {}; LISTA_GRUPOS.forEach(g => { const lk = linkTutor(g.id); if (lk) porG[g.id] = lk; });
     for (const lk of incA.links || []) { const g = Object.keys(porG).find(k => porG[k].id === lk.id) || '';
-      if ((lk.tutorDe || '') !== g) { await updateDoc(doc(db, 'buzon', lk.id), { tutorDe: g }); lk.tutorDe = g; } }
+      if ((lk.tutorDe || '') !== g) { const upd = { tutorDe: g }; if (!g) upd.tutorFijo = false; await updateDoc(doc(db, 'buzon', lk.id), upd); lk.tutorDe = g; if (!g) lk.tutorFijo = false; } }
     for (const [g, lk] of Object.entries(porG)) {
       // 1) Lo que registró el tutor pasa al seguimiento del reporte.
       const ss = await getDocs(collection(db, 'buzon', lk.id, 'seg'));
@@ -3519,7 +3521,7 @@ function tabGrupo() {
   const tot = { n: L.length, p: L.filter(i => estInc(i) === 'pendiente').length, fam: L.filter(avisadoInc).length, tut: L.filter(i => tutorSiguio(i, nomT)).length };
   p.innerHTML = `<div class="tarjeta"><div class="grupos" role="group" aria-label="Grupos">${LISTA_GRUPOS.map(x => `<button type="button" class="grupo" data-gv="${x.id}" aria-pressed="${x.id === g}">${x.grado}.° ${x.grupo}</button>`).join('')}</div>
     <h2 style="margin:.6rem 0 .2rem">${gNomInc(g)}</h2>
-    <p style="margin:0">👤 Tutor(a): <b>${esc(nomT || 'sin tutor registrado')}</b> · Prefecto(a): ${esc(PREFECTO(+g[0]))} · ${lk ? '<span style="color:#2E7D4F">✓ tiene link: ve estos reportes y registra su seguimiento</span>' : '<b style="color:var(--rojo)">sin link personal</b> <button type="button" class="btn linea chico" id="gv-links">Crear su link</button>'}</p>
+    <p style="margin:0">👤 Tutor(a): <b>${esc(nomT || 'sin tutor registrado')}</b> · Prefecto(a): ${esc(PREFECTO(+g[0]))} · ${lk ? '<span style="color:#2E7D4F">✓ tiene link: ve estos reportes y registra su seguimiento</span>' : `<b style="color:var(--rojo)">no encuentro su link</b>${nomT ? ` <span class="fila-btn" style="display:inline-flex;margin:.2rem 0"><select id="gv-lk-sel" style="max-width:15rem"><option value="">— Elige su link —</option>${(incA.links || []).filter(l => l.activo).sort((a, b) => a.maestro.localeCompare(b.maestro, 'es')).map(l => `<option value="${l.id}">${esc(l.maestro)}${l.tutorDe ? ` (tutor de ${l.tutorDe})` : ''}</option>`).join('')}</select><button type="button" class="btn oro chico" id="gv-lk-ok">Es su link</button><button type="button" class="btn linea chico" id="gv-links">Crear uno nuevo</button></span>` : ''}`}</p>
     <div class="resumen" style="margin-top:.6rem"><div><b>${tot.n}</b>reportes</div><div><b>${tot.p}</b>pendientes</div><div><b>${tot.fam}</b>avisados a la familia</div><div><b>${tot.tut}</b>con seguimiento del tutor</div></div></div>
   ${tutA.error && tutA.error.code === 'permission-denied' ? avisoReglasTutor() : ''}
   <div class="tarjeta"><div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center"><h3 style="margin:0">Reportes por alumno y semana</h3>
@@ -3535,6 +3537,10 @@ function tabGrupo() {
   p.querySelectorAll('[data-gv]').forEach(b => b.addEventListener('click', () => { incA.grupoVista = b.dataset.gv; tabGrupo(); }));
   $('#gv-todos').addEventListener('change', e => { incA.verTodos = e.target.checked; tabGrupo(); });
   $('#gv-links')?.addEventListener('click', () => { estado.pestana = 'cv-links'; panelDirectivo(); });
+  $('#gv-lk-ok')?.addEventListener('click', async () => { const id = $('#gv-lk-sel').value; if (!id) { aviso('Elige el link del tutor en la lista.', true); return; }
+    try { for (const l of (incA.links || []).filter(x => x.tutorDe === g && x.id !== id)) { await updateDoc(doc(db, 'buzon', l.id), { tutorDe: '', tutorFijo: false }); l.tutorDe = ''; l.tutorFijo = false; }
+      await updateDoc(doc(db, 'buzon', id), { tutorDe: g, tutorFijo: true }); const l = incA.links.find(x => x.id === id); l.tutorDe = g; l.tutorFijo = true;
+      delete tutA.espejo[g]; await syncTutores(true); aviso('Listo: ese link ya es el del tutor del grupo.'); tabGrupo(); } catch (e) { errorInc(e); } });
   $('#gv-nuevo').addEventListener('click', () => concentradoInc({ g, modo: 'tut' }));
   ligarBotonesInc(p); ligarAvisoReglas(p);
   // Historial de concentrados
