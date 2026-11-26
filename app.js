@@ -1614,7 +1614,7 @@ function panelDirectivo() {
   vista.querySelectorAll('[data-area]').forEach(b => b.addEventListener('click', () => { const a = b.dataset.area === 'cv'; if (a === cv) return; if (estado.pestana === 'reportes') soltarReporte(); estado.pestana = a ? 'cv-hoy' : 'tablero'; panelDirectivo(); }));
   vista.querySelectorAll('.pestanas button').forEach(b => b.addEventListener('click', () => { if (estado.pestana === 'reportes' && b.dataset.t !== 'reportes') soltarReporte(); estado.pestana = b.dataset.t; panelDirectivo(); }));
   ({ tablero: () => tablero($('#panel')), revision: tabRevision, analisis: tabAnalisis, calendario: tabCalendario, responsables: () => vistaResponsables($('#panel')), alumnos: tabAlumnos, reportes: tabReportes, incidencias: tabIncidencias, maestros: tabMaestros, datos: tabDatos,
-    'cv-hoy': tabHoy, 'cv-grupo': tabGrupo, 'cv-avisar': tabAvisar, 'cv-citas': tabCitas, 'cv-agenda': tabDirectorio, 'cv-msj': tabMensajes, 'cv-links': tabLinks })[estado.pestana]();
+    'cv-hoy': tabHoy, 'cv-grupo': tabGrupo, 'cv-avisar': tabAvisar, 'cv-citas': tabCitas, 'cv-agenda': tabDirectorio, 'cv-msj': tabMensajes, 'cv-links': tabLinks, 'cv-eia': tabResultadosEIA })[estado.pestana]();
   if (foco) { const f = $('#filtro-alumnos'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
 }
 
@@ -3197,7 +3197,7 @@ function hojaContactos() {
    Cada mensaje que sale de aquí queda en contactos/{CURP}.msgs (historial por familia) y en el reporte
    (avisoFam / cita.enviado), así lo ven el maestro que reportó y el tutor en su concentrado.
    ====================================================================== */
-const CV_TABS = [['cv-hoy', 'Hoy'], ['incidencias', 'Reportes'], ['cv-grupo', 'Por grupo'], ['cv-avisar', 'Por avisar'], ['cv-citas', 'Citas'], ['cv-agenda', 'Agenda de papás'], ['cv-msj', 'Mensajes enviados'], ['reportes', 'Reporte general'], ['cv-links', 'Links del personal']];
+const CV_TABS = [['cv-hoy', 'Hoy'], ['incidencias', 'Reportes'], ['cv-grupo', 'Por grupo'], ['cv-avisar', 'Por avisar'], ['cv-citas', 'Citas'], ['cv-agenda', 'Agenda de papás'], ['cv-msj', 'Mensajes enviados'], ['reportes', 'Reporte general'], ['cv-eia', 'Resultados EIA'], ['cv-links', 'Links del personal']];
 const esCV = t => CV_TABS.some(([k]) => k === t);
 const fLoc = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? String(iso).slice(0, 10) : d.toLocaleDateString('en-CA'); };
 const hLoc = iso => hora12(new Date(iso).toTimeString().slice(0, 5));
@@ -3212,6 +3212,17 @@ function avisoReportaTxt(i) {
   return `Hola, ${i.reporta.split(' ').slice(0, 2).join(' ')}. Sobre el reporte de ${titulo(nomInc(i))} (${grpInc(i).replace(/^(\d)/, '$1.° ')}) del ${fTab(i.fecha)}: ${q}. Gracias por reportarlo.\n\n${estado.config?.subdirector || 'Subdirección'}`;
 }
 // Carga lo que necesita el área (reportes y agenda) y vuelve a pintar la pestaña.
+// Resultados EIA: el módulo se carga solo cuando se abre la pestaña.
+async function tabResultadosEIA() {
+  if (!cvCargar('cv-eia')) return;
+  const panel = $('#panel'); panel.innerHTML = '<div class="tarjeta"><p class="cargando">Cargando resultados…</p></div>';
+  try {
+    const { tabEIA } = await import('./eia.js?v=2026112601');
+    const porNombre = {};
+    (incA.lista || []).forEach(i => { const k = normal(nomInc(i)).replace(/\s+/g, ' ') + '|' + grpInc(i); porNombre[k] = (porNombre[k] || 0) + 1; });
+    await tabEIA({ db, panel, aviso, abrirModal, imprimir, reportesDe: (nombre, g) => porNombre[normal(nombre).replace(/\s+/g, ' ') + '|' + g] || 0 });
+  } catch (e) { console.error(e); panel.innerHTML = '<div class="tarjeta"><p>No se pudieron cargar los resultados. Recarga la página.</p></div>'; }
+}
 function cvCargar(tab, fn) {
   const falta = [];
   if (!incA.lista) falta.push(cargarIncidencias());
