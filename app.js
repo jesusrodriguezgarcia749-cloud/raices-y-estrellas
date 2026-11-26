@@ -3659,18 +3659,22 @@ const REGLA_BUZON = `    // Links personales de los maestros para reportar incid
     }`;
 function bandejaInc(L) {
   const hoy = hoyISO();
-  const nuevos = L.filter(i => (i.creadoISO || '').slice(0, 10) === hoy || i.fecha === hoy);
+  const nuevos = L.filter(i => i.fecha === hoy);
+  // Capturados hoy pero de hechos de días anteriores: van aparte y con su fecha, para no confundirlos con los de hoy.
+  // creadoISO está en hora UTC: se convierte al día local para que lo capturado anoche no salga como de hoy.
+  const diaLocal = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? String(iso).slice(0, 10) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const atrasados = L.filter(i => i.fecha !== hoy && diaLocal(i.creadoISO) === hoy);
   const porAsignar = L.filter(i => i.origen === 'maestro' && !i.capturo && i.atiende === 'subdireccion' && estInc(i) === 'pendiente' && !segBase(i).length);
   const alTutor = L.filter(i => i.origen === 'maestro' && i.atiende === 'tutor' && estInc(i) === 'pendiente' && !segBase(i).length);
   const citas = L.filter(i => i.cita && i.cita.resultado !== 'asistio').sort((a, b) => (a.cita.fecha || '').localeCompare(b.cita.fecha || ''));
   const venc = citas.filter(i => !i.cita.resultado && i.cita.fecha < hoy);
   const graves = L.filter(i => i.gravedad === 'grave' && estInc(i) === 'pendiente');
-  if (!nuevos.length && !porAsignar.length && !alTutor.length && !citas.length && !graves.length) return '';
+  if (!nuevos.length && !atrasados.length && !porAsignar.length && !alTutor.length && !citas.length && !graves.length) return '';
   const mini = i => `<li><button type="button" class="enlace" data-inc-exp="${esc(claveAl(i))}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(nomInc(i))}</b></button> <small>· ${esc(grpInc(i).replace(/^(\d)/, '$1.° '))} · ${esc(i.reporta || '—')}${i.gravedad === 'grave' ? ' · <b style="color:var(--rojo)">grave</b>' : ''}</small></li>`;
   const miniCita = i => `<li><button type="button" class="enlace" data-inc-exp="${esc(claveAl(i))}" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer"><b>${esc(nomInc(i))}</b></button> <small>· ${fTab(i.cita.fecha)} ${hora12(i.cita.hora)} · con ${esc(i.cita.con || '—')}${!i.cita.enviado ? ' · <b>falta citatorio</b>' : ''}${i.cita.resultado === 'noasistio' ? ' · <b style="color:var(--rojo)">no asistió</b>' : !i.cita.resultado && i.cita.fecha < hoy ? ' · <b style="color:var(--rojo)">vencida</b>' : ''}</small></li>`;
   const bloque = (t, A, f) => A.length ? `<div style="margin:.5rem 0"><h3 style="margin:0 0 .2rem;font-size:1.05rem">${t} (${A.length})</h3><ul style="margin:0;padding-left:1.2rem;line-height:1.6">${A.slice(0, 12).map(f).join('')}</ul></div>` : '';
   return `<div class="tarjeta" style="border-left:5px solid var(--oro)"><h2>Bandeja</h2>
-    ${bloque('⚠ Graves sin atender', graves, mini)}${bloque('🆕 Hoy', nuevos, mini)}${bloque('🤝 Para atender juntos con el maestro', porAsignar, mini)}${bloque('👩‍🏫 Turnados al tutor del grupo (avísale)', alTutor, mini)}
+    ${bloque('⚠ Graves sin atender', graves, mini)}${bloque('🆕 Hoy', nuevos, mini)}${bloque('📥 Registrados hoy, de días anteriores', atrasados, i => mini(i).replace('<small>· ', `<small>· ${fTab(i.fecha)} · `))}${bloque('🤝 Para atender juntos con el maestro', porAsignar, mini)}${bloque('👩‍🏫 Turnados al tutor del grupo (avísale)', alTutor, mini)}
     ${bloque('📅 Citas con la familia', citas, miniCita)}${venc.length ? `<p class="ayuda" style="color:var(--rojo)">${venc.length} cita${venc.length === 1 ? '' : 's'} ya pasaron de fecha y no tienen resultado.</p>` : ''}</div>`;
 }
 function textoCitatorio(i) {
