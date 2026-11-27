@@ -3,7 +3,7 @@
    datos a revisar y una presentación para el Consejo Técnico que se arma paso a paso.
    Los totales vienen en eia-datos.js; la lista de alumnos va cifrada (AES-GCM) y se abre con la clave,
    que se guarda en reportes/_eia/privado/clave (solo la cuenta directiva la puede leer). */
-import { EIA } from './eia-datos.js?v=2026112701';
+import { EIA, EIA_PREV } from './eia-datos.js?v=2026112702';
 import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const C = ['LEN', 'SPC', 'ENS', 'HYC'];
@@ -336,6 +336,27 @@ function diapositivas() {
       return tarjeta(g, ORD[g], `<p>${peor.d >= 8 ? `Más abajo que el estado en <b>${NC[peor.c]}</b>: ${peor.d} puntos más en «Requiere apoyo».` : 'Dentro del promedio estatal o mejor en los cuatro campos.'}</p>${mejor.d < 0 ? `<p>Mejor que el estado en <b>${NC[mejor.c]}</b> (${-mejor.d} puntos menos).</p>` : ''}`, peor.d >= 8 ? '#C8403A' : '#2E8B57'); }).join('')}
     ${tarjeta(4, 'La alerta está en tercero', `<p>Tercero está por encima del estado en los cuatro campos; en Saberes, ${ap(escGrado(3, 'SPC'))} % contra ${ap(R.grado[3].SPC)} %.</p><p>La SEDUC también marca a tercero de secundaria en Saberes como la principal señal de alerta del estado.</p>`, '#C8403A')}</div></div>` });
 
+  /* ---- Comparativa con el ciclo 2025-2026 ---- */
+  const PV = EIA_PREV, dif = c => ap(escCampo(c)) - ap(PV.niv[c]);
+  const bajo = C.filter(c => dif(c) <= -3), subio = C.filter(c => dif(c) >= 3), lista = a => a.map(c => NC[c]).join(a.length > 2 ? ', ' : ' y ').replace(/, ([^,]*)$/, ' y $1');
+  S.push({ pasos: 5, html: () => `<h2>¿Cómo veníamos el ciclo pasado?</h2><div class="eia-dos">
+    <div class="eia-comp">${leyenda()}${C.map((c, k) => `<div data-p="${k + 1}"><h4 style="color:${CC[c]}">${NC[c]}</h4>
+      <div class="eia-fila chica3"><span class="eia-et">2025-2026</span>${barraPct(PV.niv[c])}</div><div class="eia-fila chica3"><span class="eia-et">2026-2027</span>${barraPct(escCampo(c))}</div></div>`).join('')}</div>
+    <div class="eia-ts">${C.map((c, k) => { const a = ap(PV.niv[c]), b = ap(escCampo(c)), d = b - a;
+      return tarjeta(k + 1, NC[c], `<p>Requiere apoyo: <b>${a} %</b> el ciclo pasado y <b>${b} %</b> este ciclo.</p><p>${d <= -3 ? `Bajó ${-d} puntos: menos alumnos necesitan apoyo.` : d >= 3 ? `Subió ${d} puntos: más alumnos necesitan apoyo.` : 'Prácticamente igual.'}</p><p class="eia-dato">Aprendizaje desarrollado: ${PV.niv[c][3]} % antes, ${escCampo(c)[3]} % ahora.</p>`, d >= 3 ? '#C8403A' : d <= -3 ? '#2E8B57' : CC[c]); }).join('')}
+    ${tarjeta(5, 'Como escuela', `${bajo.length ? `<p>Bajó «Requiere apoyo» en <b>${lista(bajo)}</b>.</p>` : ''}${subio.length ? `<p>Subió en <b>${lista(subio)}</b>.</p>` : ''}<p>Y en los cuatro campos hay más alumnos con el aprendizaje desarrollado.</p><p class="eia-dato">Ojo: son ejercicios distintos y otros alumnos. El ciclo pasado se evaluó a ${PV.n} alumnos y este a ${EIA.n}.</p>`, '#16213F')}</div></div>` });
+
+  const GEN = [[1, 2], [2, 3]];
+  const filaGen = (g0, g1, c) => { const a = ap(PV.grados[g0].niv[c]), b = ap(escGrado(g1, c)), d = b - a, col = d >= 5 ? '#C8403A' : d <= -5 ? '#2E8B57' : '#9A8F80';
+    return `<div style="display:grid;grid-template-columns:.6fr .7fr .7fr .9fr;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #E6DED0"><span style="font-weight:800;color:${CC[c]}" title="${NC[c]}">${c}</span><span>${a} %</span><span><b>${b} %</b></span><span style="background:${col};color:#fff;border-radius:999px;padding:3px 10px;text-align:center;font-weight:700">${d > 0 ? '+' : ''}${d} pts</span></div>`; };
+  const genTxt = (g0, g1) => { const m = C.filter(c => ap(escGrado(g1, c)) - ap(PV.grados[g0].niv[c]) <= -5), p = C.filter(c => ap(escGrado(g1, c)) - ap(PV.grados[g0].niv[c]) >= 5); return { m, p }; };
+  const G2 = genTxt(1, 2), G3 = genTxt(2, 3);
+  S.push({ pasos: 3, html: () => `<h2>La misma generación, un año después</h2><div class="eia-dos">
+    <div>${GEN.map(([g0, g1], k) => `<div data-p="${k + 1}" style="margin-bottom:12px"><h4 style="margin:0 0 4px">${ORD[g0]} de 2025-2026 que hoy es ${ORD[g1]}</h4><div style="display:grid;grid-template-columns:.6fr .7fr .7fr .9fr;gap:8px;font-size:.8em;color:#8A7F70"><span>Campo</span><span>2025-2026</span><span>2026-2027</span><span>Diferencia</span></div>${C.map(c => filaGen(g0, g1, c)).join('')}</div>`).join('')}</div>
+    <div class="eia-ts">${tarjeta(1, 'La generación de segundo avanzó', `<p>${G2.m.length ? `Menos alumnos en «Requiere apoyo» en <b>${lista(G2.m)}</b>.` : 'Se mantuvo estable.'}${G2.p.length ? ` Pero subió en <b>${lista(G2.p)}</b>.` : ''}</p><p>Lo que se hizo con ellos el año pasado funcionó: vale la pena saber qué fue.</p>`, '#2E8B57')}
+    ${tarjeta(2, 'La generación de tercero retrocedió', `<p>Más alumnos en «Requiere apoyo» en <b>${lista(G3.p)}</b>.</p>${G3.m.length ? `<p>En ${lista(G3.m)} mejoró un poco, pero sigue siendo el campo más difícil.</p>` : ''}<p>Es la alerta de la escuela: les queda un solo ciclo.</p>`, '#C8403A')}
+    ${tarjeta(3, 'Cuidado al comparar', `<p>Cada grado responde un ejercicio distinto, y el ciclo pasado presentaron ${PV.grados[2].n} alumnos de segundo; este ciclo, ${EIA.grados[3].n} de tercero.</p><p>Es una señal para investigar, no una conclusión.</p>`, '#9A8F80')}</div></div>` });
+
   [1, 2, 3].forEach(gr => {
     const gg = gs.filter(g => g.grado === gr), extra = gr === 1 ? 1 : 0;
     S.push({ pasos: gg.length + 1 + extra, html: () => `<h2>${GRADO[gr]} grado por grupo</h2><div class="eia-dos">
@@ -399,20 +420,30 @@ function diapositivas() {
     <div class="eia-ts">${tarjeta(1, 'Alumnos que no aparecen', `<p>En los reportes faltan ${sinR} números de lista: no presentaron o no se capturaron.</p><p>Ellos no tienen diagnóstico: hay que valorarlos en el aula.</p>`, '#9A8F80')}
     ${tarjeta(2, 'Ceros por inasistencia', `<p>${falt} alumnos tienen cero en todo el EIA uno o en todo el EIA dos. Lo más probable es que faltaran ese día.</p><p>Su nivel puede estar por debajo de lo que realmente saben.</p>`, '#9A8F80')}</div></div>` });
 
+  S.push({ pasos: 6, html: () => `<h2>Del dato a la barrera: lo que vimos hoy</h2><p class="eia-nota">Antes de decir «no saben», preguntémonos qué barrera para el aprendizaje y la participación hay detrás</p>
+    <div class="eia-props dos">
+      <div class="eia-prop" data-p="1" style="--c:#C8403A"><span>D</span><b>Barrera didáctica</b><p>En tercero nadie resolvió el problema de área y perímetro. ¿Fue la consigna, larga y sin apoyo visual, la que les cerró la puerta?</p></div>
+      <div class="eia-prop" data-p="2" style="--c:#E8893A"><span>E</span><b>Barrera estructural</b><p>Treinta números de lista sin resultado. Faltar a la evaluación también puede ser una barrera para participar: trabajo, traslado, avisos que no llegan.</p></div>
+      <div class="eia-prop" data-p="3" style="--c:#7A4FB0"><span>A</span><b>Barrera actitudinal</b><p>«Tercero ya no tiene remedio.» Si lo creemos, dejamos de intentarlo. La generación de segundo demuestra que en un año sí se puede avanzar.</p></div>
+      <div class="eia-prop" data-p="4" style="--c:#16213F"><span>N</span><b>Barrera en la evaluación</b><p>Si cada grupo lee la rúbrica a su manera, el resultado no refleja lo que el alumno sabe. Unificar criterios también es quitar una barrera.</p></div></div>
+    <div class="eia-dos" style="margin-top:14px"><p class="eia-nota" data-p="5"><b>Diseño Universal para todo el grupo:</b> la fórmula «Yo pienso que… porque… por ejemplo…», textos discontinuos y problemas con datos reales, planeados desde el inicio para todos.</p>
+    <p class="eia-nota" data-p="6"><b>Ajuste razonable para cada alumno prioritario:</b> barrera concreta, qué cambia, cuándo, quién lo hace y cómo sabremos que funcionó. No se trata de diversificar todo todos los días.</p></div>` });
+
   const PROP = [
     ['Argumentar en todas las materias', '«Yo pienso que… porque… por ejemplo…» y una rúbrica corta común.', CC.LEN],
     ['Leer y hacer textos discontinuos', 'Tablas, esquemas e infografías. Una lectura al mes de Raíces y Estrellas con texto discontinuo.', CC.LEN],
     ['Matemáticas con datos reales', 'Gráficas con datos del grupo, división con dos cifras y, en tercero, área y perímetro con planos de la escuela.', CC.SPC],
     ['Convivencia y derechos en el aula', 'Propuestas colectivas contra la violencia y el maltrato, de la mano de Formación Cívica y Tutoría.', CC.ENS],
-    ['Seguimiento a prioritarios', 'Lista para cada tutor, revisión quincenal y contacto con la familia cuando haga falta.', CC.HYC],
+    ['Ajustes razonables para prioritarios', 'Lista para cada tutor y un plan sencillo por alumno: barrera, ajuste, responsable y seguimiento quincenal con la familia.', CC.HYC],
     ['Calificar igual', 'Calibrar la rúbrica en academia con respuestas reales antes de la siguiente aplicación.', '#E8893A']
   ];
   S.push({ pasos: PROP.length, html: () => `<h2>Propuestas para trabajar</h2><div class="eia-props">${PROP.map(([t, d, c], k) => `<div class="eia-prop" data-p="${k + 1}" style="--c:${c}"><span>${k + 1}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div>` });
 
-  S.push({ pasos: 3, html: () => `<h2>Para el colectivo</h2><div class="eia-pregs">
+  S.push({ pasos: 4, html: () => `<h2>Para el colectivo</h2><div class="eia-pregs">
     <div data-p="1"><span>1</span><p>¿Qué aprendizaje de esta lista trabajo yo en mi asignatura, aunque no sea mi campo?</p></div>
     <div data-p="2"><span>2</span><p>¿Qué acuerdo concreto podemos tomar hoy como academia para la próxima semana?</p></div>
-    <div data-p="3"><span>3</span><p>¿Cómo vamos a saber, en la siguiente aplicación, si funcionó?</p></div></div>` });
+    <div data-p="3"><span>3</span><p>¿Cómo vamos a saber, en la siguiente aplicación, si funcionó?</p></div>
+    <div data-p="4"><span>4</span><p>¿Qué barrera, de nosotros y no del alumno, explica el resultado que más me preocupa de mis grupos?</p></div></div>` });
 
   S.push({ pasos: 0, html: () => `<div class="eia-portada fin"><h1>Gracias</h1><p class="eia-sub">Los resultados por grupo, por alumno y por aprendizaje están en la plataforma, en Convivencia y familias, pestaña «Resultados EIA».</p>
     <p class="eia-k">Análisis elaborado con apoyo de inteligencia artificial a partir de los reportes oficiales de la SEP.</p></div>` });
