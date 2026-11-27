@@ -662,3 +662,9 @@ body.eia-presentando{overflow:hidden}
 .hoy-falta{margin:.25rem 0 0;font-weight:700;color:#8A2A1D;font-size:.92rem}
 .hoy-listos summary{cursor:pointer;list-style:none}
 .hoy-listos summary::-webkit-details-marker{display:none}
+/* Link del maestro: la opción elegida de «¿Quién lo atiende?» se ve claramente */
+.rp-op[data-at]{position:relative}
+.rp-op[data-at][aria-pressed="true"]{background:#DDF0E3;border:2.5px solid var(--verde);box-shadow:0 0 0 3px rgba(46,139,87,.18)}
+.rp-op[data-at][aria-pressed="true"]::after{content:"✓ Elegido";position:absolute;top:.45rem;left:.5rem;background:var(--verde);color:#fff;font-size:.75rem;font-weight:700;border-radius:999px;padding:.1rem .5rem}
+.rp-op[data-at][aria-pressed="false"]{opacity:.75}
+.rp-op[data-at]{padding-top:2rem;vertical-align:top}
