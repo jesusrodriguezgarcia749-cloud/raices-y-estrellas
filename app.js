@@ -2720,8 +2720,9 @@ function avisosInc(i) {
   const pill = (hecho, attr, txtOk, txtNo, extra = '') => `<button type="button" class="aviso-pill ${hecho ? 'ok' : 'no'}${extra}" ${attr}>${hecho ? '✅ ' + txtOk : '📲 ' + txtNo}</button>`;
   const fam = i.noAvisar ? '<span class="aviso-pill na">Familia: no requiere aviso</span>'
     : pill(avisadoInc(i), `data-inc-fam="${i.id}"`, `Familia · ${f(i.avisoFam || i.cita?.enviado)}`, 'Avisar a la familia');
-  const tu = tut ? pill(!!i.avisoTutor, `data-inc-tut="${i.id}"`, `Tutor · ${i.avisoTutor ? f(i.avisoTutor) : ''}`, `Avisar al tutor${i.atiende === 'tutor' ? ' (turnado)' : ''}`, i.atiende === 'tutor' || i.avisoTutor ? '' : ' opc') : '';
-  const rp = reportaExterno(i) ? pill(!!i.avisoReporta, `data-inc-rep="${i.id}"`, `${esc(i.reporta.split(' ')[0])} · ${i.avisoReporta ? f(i.avisoReporta) : ''}`, `Avisar a ${esc(i.reporta.split(' ')[0])}`, avisadoInc(i) || i.avisoTutor || estInc(i) === 'atendido' ? '' : ' opc') : '';
+  const nT = tut ? esc(tut.split(' ').slice(0, 2).join(' ')) : '', nR = reportaExterno(i) ? esc(titulo(i.reporta.split(' ')[0])) : '';
+  const tu = tut ? pill(!!i.avisoTutor, `data-inc-tut="${i.id}" title="Tutor de ${esc(g.replace(/^(\d)/, '$1.° '))}: ${esc(tut)}"`, `Tutor ${nT} · ${i.avisoTutor ? f(i.avisoTutor) : ''}`, `Avisar al tutor: ${nT}${i.atiende === 'tutor' ? ' (turnado)' : ''}`, i.atiende === 'tutor' || i.avisoTutor ? '' : ' opc') : '';
+  const rp = reportaExterno(i) ? pill(!!i.avisoReporta, `data-inc-rep="${i.id}"`, `${nR} · ${i.avisoReporta ? f(i.avisoReporta) : ''}`, `Avisar a ${nR}`, avisadoInc(i) || i.avisoTutor || estInc(i) === 'atendido' ? '' : ' opc') : '';
   return `<div class="avisos-inc">${fam}${tu}${rp}</div>`;
 }
 async function avisarTutor(i, alVolver) {
@@ -3315,7 +3316,7 @@ function faltasInc(i) {
   if (i.cita && !i.cita.enviado && !i.cita.resultado) F.push(i.cita.porConfirmar ? 'confirmar la cita' : 'enviar el citatorio');
   if (i.cita?.enviado && !i.cita.resultado && i.cita.fecha < hoy) F.push('anotar cómo fue la cita');
   if (i.atiende === 'tutor' && !i.avisoTutor && TUTORES[grpInc(i)]) F.push('avisar al tutor');
-  if (reportaExterno(i) && !i.avisoReporta && (avisadoInc(i) || i.avisoTutor || estInc(i) === 'atendido')) F.push(`avisar a ${i.reporta.split(' ')[0]}`);
+  if (reportaExterno(i) && !i.avisoReporta && (avisadoInc(i) || i.avisoTutor || estInc(i) === 'atendido')) F.push(`avisar a ${titulo(i.reporta.split(' ')[0])}`);
   return F;
 }
 function tabHoy() {
