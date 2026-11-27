@@ -1,217 +1,202 @@
-/* CTE · Ajustes razonables (Tema 3, Espacio para la reflexión y la transformación de la práctica, SEP 2026-2027)
-   Sesión interactiva para proyectar: juego de arranque, datos de la escuela (EIA, sin nombres), la jornada de un
-   alumno, priorización de barreras, los seis pasos con el cuadro de la SEP, aptitudes sobresalientes y el producto
-   impreso en carta. Todo se guarda en este navegador (localStorage); no usa internet más que para cargar la página. */
-(() => {
+/* CTE en vivo · pantalla del proyector (la maneja quien conduce, con la cuenta directiva).
+   Abre una sesión cte/{código}; los maestros entran desde su celular a cte.html?s=código y contestan cada actividad.
+   Aquí se ven las diapositivas, quién ya contestó (palomita) y las respuestas sin nombre. Al final, el producto en carta. */
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, getDocs, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const app = initializeApp({ apiKey: 'AIzaSyB0IzYArTNquMl5-zphxdW9G4wcYmPgekA', authDomain: 'raices-y-estrellas-est17.firebaseapp.com', projectId: 'raices-y-estrellas-est17',
+  storageBucket: 'raices-y-estrellas-est17.firebasestorage.app', messagingSenderId: '666765040335', appId: '1:666765040335:web:a5bae72abc2dbd1b7035ba' });
+const auth = getAuth(app), db = getFirestore(app);
+const { PASOS, OPS, MOMENTOS, CRIT, SEIS, CASO } = window.CTE;
 const $ = s => document.querySelector(s);
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const CLAVE = 'cte_ajustes_v1';
-let E = {}; try { E = JSON.parse(localStorage.getItem(CLAVE) || '{}'); } catch { E = {}; }
-const guardar = () => { try { localStorage.setItem(CLAVE, JSON.stringify(E)); } catch { /* sin espacio */ } };
-E.jor ||= {}; E.bar ||= []; E.pasos ||= {}; E.cuadro ||= {}; E.juego ||= {}; E.acuerdos ||= ''; E.extra ||= {};
+const vista = $('#vista');
+const URL_CEL = c => new URL(`cte.html?s=${c}`, location.href).href;
 
-const SECC = [['inicio', 'Inicio'], ['juego', 'Juego'], ['datos', 'Nuestros datos'], ['jornada', 'La jornada'], ['prior', 'Priorizar'], ['pasos', 'Seis pasos'], ['sobres', 'Aptitudes sobresalientes'], ['producto', 'Producto']];
-let sec = E.sec || 'inicio';
+let sid = localStorage.getItem('cte_sid') || '', S = null, R = [], guia = false, verQ = 0, desuscribir = [];
+const parse = v => { try { return JSON.parse(v); } catch { return v; } };
 
-/* ---------- Juego: ¿accesibilidad, Diseño Universal o ajuste razonable? ---------- */
-const OPS = [['acc', 'Accesibilidad universal'], ['dua', 'Diseño Universal (DUA)'], ['aju', 'Ajuste razonable'], ['no', 'No es un ajuste']];
-const CASOS = [
-  ['Poner pictogramas en los baños, la biblioteca, la dirección y los laboratorios.', 'acc', 'Es para toda la comunidad y se decide antes de conocer a quién lo va a usar: es accesibilidad.'],
-  ['Planear la clase con un texto corto, un video con subtítulos y dejar que cada quien entregue un escrito, un dibujo o una exposición oral.', 'dua', 'Se diseña desde el inicio para todo el grupo, con varias formas de representar y de expresar: es Diseño Universal.'],
-  ['Leer en voz alta las consignas del examen a todo el grupo.', 'dua', 'Es para todos, no para un alumno en particular. La SEP es clara: aplicar lo mismo a todo el grupo no es un ajuste razonable.'],
-  ['A Mariana, que lee con mucha dificultad, darle la consigna leída, un esquema de apoyo y diez minutos más en el examen.', 'aju', 'Parte de una barrera concreta de una alumna específica, no baja la exigencia y no la separa del grupo: es un ajuste razonable.'],
-  ['Mandar a un alumno a la biblioteca a hacer «algo más fácil» mientras el grupo trabaja.', 'no', 'Separarlo del grupo y bajarle la exigencia es justo lo que la SEP dice que NO es un ajuste razonable.'],
-  ['Que la plataforma de la escuela abra en cualquier celular y funcione con lector de pantalla.', 'acc', 'Es una condición del entorno digital, para todas las personas: accesibilidad.'],
-  ['A un alumno con baja visión, darle las lecturas en letra grande y sentarlo cerca del pizarrón.', 'aju', 'Responde a la necesidad de un alumno en particular cuando el diseño general no alcanzó: ajuste razonable.'],
-  ['Esperar a que el alumno traiga su diagnóstico del médico para empezar a apoyarlo.', 'no', 'La SEP dice que no hay que esperar un diagnóstico clínico para quitar una barrera que ya se observa.'],
-  ['Dejar que todo el grupo elija si entrega su producto como podcast, cartel o texto.', 'dua', 'Múltiples formas de acción y expresión para todos desde la planeación: Diseño Universal.'],
-  ['A una alumna con aptitudes sobresalientes en Lenguajes, proponerle coordinar el periódico escolar con los temas que ve el grupo.', 'aju', 'Es enriquecimiento curricular individualizado, ligado a los contenidos del grupo y sin separarla: un ajuste razonable para aptitudes sobresalientes.'],
-];
+/* ---------- Entrada ---------- */
+onAuthStateChanged(auth, u => { if (u && u.email === 'directivos@est17.mx') inicio(); else login(); });
+function login() {
+  vista.innerHTML = `<div class="login tarjeta"><h2>Entrar como Dirección</h2><p>Para abrir la sesión en vivo se usa la cuenta directiva (la misma del panel de Raíces y Estrellas).</p>
+    <div class="campo"><label>Contraseña de la cuenta directiva</label><input id="pw" type="password"></div><p id="err" style="color:var(--no)"></p><button class="btn" id="ok">Entrar</button></div>`;
+  const ir = async () => { try { await signInWithEmailAndPassword(auth, 'directivos@est17.mx', $('#pw').value); } catch { $('#err').textContent = 'Contraseña incorrecta.'; } };
+  $('#ok').onclick = ir; $('#pw').onkeydown = e => { if (e.key === 'Enter') ir(); };
+}
+async function inicio() {
+  if (sid) { try { const s = await getDoc(doc(db, 'cte', sid)); if (s.exists() && s.data().activo) return conectar(); } catch (e) { return errorReglas(e); } }
+  vista.innerHTML = `<div class="login tarjeta"><h2>Sesión en vivo del CTE</h2><p>Se abre una sesión con un código. Los maestros la siguen desde su celular.</p>
+    <button class="btn" id="nueva">Abrir sesión nueva</button>${sid ? `<p class="mini">La sesión anterior (${sid}) está cerrada.</p>` : ''}</div>`;
+  $('#nueva').onclick = nueva;
+}
+async function nueva() {
+  let nombres = [];
+  try { const s = await getDocs(collection(db, 'buzon')); nombres = [...new Set(s.docs.map(d => d.data()).filter(b => b.activo && b.maestro).map(b => b.maestro.trim()))].sort((a, b) => a.localeCompare(b, 'es')); } catch { /* sin lista: escriben su nombre */ }
+  const code = String(1000 + Math.floor(Math.random() * 9000));
+  try { await setDoc(doc(db, 'cte', code), { activo: true, creado: new Date().toISOString(), nombres, k: 0, r: 0, i: 0, rev: false, barreras: [] }); }
+  catch (e) { return errorReglas(e); }
+  sid = code; localStorage.setItem('cte_sid', sid); conectar();
+}
+function errorReglas(e) {
+  console.error(e);
+  vista.innerHTML = `<div class="login tarjeta"><h2>Falta un permiso en Firebase</h2><p>Para la sesión en vivo hay que pegar las reglas nuevas de Firestore (el archivo completo que te pasó Claude) y publicarlas. Después recarga esta página.</p><p class="mini">${esc(e.code || e.message || '')}</p></div>`;
+}
+function conectar() {
+  desuscribir.forEach(f => f()); desuscribir = [];
+  desuscribir.push(onSnapshot(doc(db, 'cte', sid), s => { S = s.data(); pintar(); }, errorReglas));
+  desuscribir.push(onSnapshot(collection(db, 'cte', sid, 'r'), s => { R = s.docs.map(d => ({ id: d.id, ...d.data() })); pintarVivo(); }, e => console.error(e)));
+}
+const mover = async cambios => { Object.assign(S, cambios); pintar(); try { await updateDoc(doc(db, 'cte', sid), cambios); } catch (e) { console.error(e); } };
 
-/* ---------- Datos de la escuela (reportes oficiales EIA, septiembre 2026; sin nombres) ---------- */
-const DATOS = {
-  alumnos: 165, prioritarios: 32, sinResultado: 30, faltaron: 5, sobresalientes: 9,
-  lectura3: [['Uso de la infografía', 83], ['Estructura del texto de divulgación', 81]],
-  mate3: [['Resolución del problema de área y perímetro', 100], ['Estrategia de solución', 92], ['Uso de lenguaje matemático', 92]],
-  textoDisc1: 52, argumentar: '34 % a 63 %'
-};
-// Caso real de un alumno prioritario de tercero, con nombre ficticio.
-const CASO = { nombre: 'Diego', grado: 'tercer grado', niveles: 'Requiere apoyo en los cuatro campos formativos',
-  ceros: ['Comprensión del tema (texto de divulgación)', 'Estructura del texto', 'Oportunidades que propicia o limita un proceso técnico'],
-  unos: 'Uno en casi todo lo demás: argumentación, estrategia de solución, uso de lenguaje matemático, propuestas éticas, infografía.' };
+/* ---------- Datos en vivo ---------- */
+const conectados = () => new Set(R.filter(r => r.act === 'join').map(r => r.p));
+const resp = (act, i = null) => R.filter(r => r.act === act && (i === null || r.i === i));
+const corto = n => esc(n.split(' ').slice(0, 2).join(' '));
 
-const MOMENTOS = ['Acceso y movilidad', 'Comunicación', 'Participación en actividades', 'Materiales y recursos', 'Evaluación', 'Interacción con sus pares', 'Familia y comunidad'];
-const CRIT = ['Impacto en su derecho a participar y aprender', 'Frecuencia con que aparece', 'Depende de decisiones de la escuela', 'Viabilidad del cambio', 'Se puede dar seguimiento'];
-const PASOS = [['situacion', 'Situación', '¿Qué actividad o experiencia educativa queremos garantizar?', 'Ej.: Que Diego comprenda y resuelva los problemas escritos de Matemáticas en clase y en los exámenes.'],
-  ['barrera', 'Barrera', '¿Qué condición del entorno está dificultando el acceso, la participación o el aprendizaje?', 'Ej.: Las consignas son textos largos sin apoyo visual; se le evalúa solo por escrito y con el mismo tiempo que al grupo.'],
-  ['necesidad', 'Necesidad', '¿Qué requiere para participar en igualdad de condiciones?', 'Ej.: Acceder al contenido de la consigna sin que su nivel de lectura le impida mostrar lo que sabe de Matemáticas.'],
-  ['ajuste', 'Ajuste razonable', '¿Qué modificación concreta, necesaria y adecuada podemos implementar?', 'Ej.: Consigna leída en voz baja por el docente, esquema con los datos del problema y quince minutos adicionales; misma exigencia que el grupo.'],
-  ['implementa', 'Implementación', '¿Quién lo hará, cuándo, con qué recursos y en qué espacios?', 'Ej.: Docentes de Matemáticas y Ciencias, en cada examen y actividad escrita a partir de diciembre; el tutor lo comunica a la familia.'],
-  ['seguimiento', 'Seguimiento', '¿Cómo sabremos si funcionó y qué debemos modificar?', 'Ej.: Su calificación quincenal de lectura en Raíces y Estrellas y su nivel en Saberes en la siguiente aplicación de los EIA; se revisa en el CTE de enero.']];
-const CUADRO = [['bap', 'BAP'], ['ambito', 'Ámbito (escolar, áulico, sociofamiliar-comunitario)'], ['particip', 'Participación en actividades'], ['nna', 'NNA o grupo involucrado'], ['ajustes', 'Ajuste(s) razonable(s) propuesto(s)'], ['recursos', 'Recursos y apoyos requeridos'], ['evidencia', 'Evidencia de avance'], ['resp', 'Responsables'], ['fecha', 'Fecha de revisión']];
+/* ---------- Pintar ---------- */
+function pintar() {
+  if (!S) return;
+  const k = S.k || 0, P = PASOS[k];
+  $('#cod').textContent = `Código: ${sid}`;
+  $('#donde').textContent = `${k + 1} de ${PASOS.length}`;
+  $('#nav').innerHTML = `<button type="button" data-qr>QR</button><button type="button" data-prod>Producto</button><button type="button" data-cerrar>Cerrar sesión</button>`;
+  const lado = P.t === 'act' || P.nota === 'portada';
+  vista.innerHTML = `<div class="wrap${lado ? '' : ' sin-lado'}"><div class="esc" id="esc">${guia ? `<div class="guia-txt">${esc(guiaTxt(P))}</div>` : ''}${P.t === 'dia' ? diaHTML(P, S.r || 0) : '<div id="act"></div>'}</div>${lado ? '<aside class="lado" id="lado"></aside>' : ''}</div>`;
+  if (P.nota === 'portada') ponerQR('#qr-port');
+  pintarVivo();
+}
+function guiaTxt(P) {
+  if (P.t === 'dia') return `Diapositiva: «${P.titulo}». Toca «Siguiente» para encender cada parte y coméntala con el colectivo antes de avanzar.`;
+  return { abiertas: 'Pide que contesten en su celular. A la derecha ves quién ya contestó. Cambia de pregunta con los botones para comentar las respuestas del muro.',
+    juego: 'Lee la situación en voz alta. Espera a que casi todos contesten (derecha) y toca «Revelar». Comenta la explicación y pasa a la siguiente.',
+    jornada: 'Cada quien escribe las barreras que ve en cada momento. Toquen en el muro las más importantes (hasta cinco): esas se califican en el siguiente paso.',
+    priorizar: 'Cada quien califica en su celular las barreras elegidas. Aquí se ordenan solas por el promedio del colectivo.',
+    pasos: 'Cada maestro diseña su ajuste desde su asignatura. Lean en voz alta dos o tres del muro y coméntenlos.',
+    compromiso: 'Cada quien escribe su compromiso. Al final imprime el producto con el botón «Producto».' }[P.tipo] || '';
+}
+function diaHTML(P, r) {
+  const partes = P.partes.map((h, n) => `<div data-r class="${n < r ? 'on' : ''}">${h}</div>`).join('');
+  if (P.nota === 'portada') return `<div class="portada"><div><h1>${esc(P.titulo)}</h1>${partes}</div><div class="qr" id="qr-port"></div></div>`;
+  return `<h2>${esc(P.titulo)}</h2>${partes}${P.nota && P.nota !== 'cierre' ? `<p class="mini">${esc(P.nota)}</p>` : ''}`;
+}
+function ponerQR(sel) {
+  const el = $(sel); if (!el) return;
+  try { const q = qrcode(0, 'M'); q.addData(URL_CEL(sid)); q.make(); el.innerHTML = `${q.createSvgTag({ cellSize: 6, margin: 2, scalable: true })}<b>${sid}</b><span class="mini">${esc(URL_CEL(sid).replace(/^https?:\/\//, ''))}</span>`; }
+  catch { el.innerHTML = `<b>${sid}</b><span class="mini">${esc(URL_CEL(sid))}</span>`; }
+}
 
-/* ---------- Pantallas ---------- */
+function pintarVivo() {
+  if (!S) return;
+  const P = PASOS[S.k || 0], lado = $('#lado'), con = conectados();
+  if (lado) {
+    if (P.t === 'act') {
+      const ya = new Set(resp(P.id, P.tipo === 'juego' ? (S.i || 0) : null).map(r => r.p));
+      const todos = [...new Set([...con, ...ya])].sort((a, b) => a.localeCompare(b, 'es'));
+      lado.innerHTML = `<h4>Ya contestaron</h4><p class="cuenta">${ya.size} <span class="mini">de ${con.size} conectados</span></p><div class="gente">${todos.map(n => `<span class="${ya.has(n) ? 'ok' : ''}">${ya.has(n) ? '✓ ' : ''}${corto(n)}</span>`).join('')}</div>`;
+    } else lado.innerHTML = `<h4>Conectados</h4><p class="cuenta">${con.size}</p><div class="gente">${[...con].sort((a, b) => a.localeCompare(b, 'es')).map(n => `<span class="ok">✓ ${corto(n)}</span>`).join('')}</div>`;
+  }
+  const a = $('#act'); if (!a || P.t !== 'act') return;
+  a.innerHTML = `<h2>${esc(P.titulo)}</h2>${V[P.tipo](P)}`;
+}
+
+/* ---------- Vistas en vivo por tipo de actividad ---------- */
 const V = {};
-V.inicio = () => `<h1>Ajustes razonables en la atención de niñas, niños y adolescentes con discapacidad y aptitudes sobresalientes</h1>
-  <p style="font-size:22px;color:var(--tinta2);margin-top:0">Consejo Técnico Escolar · Escuela Secundaria Técnica N.° 17, Turno Vespertino · Campo formativo de Lenguajes</p>
-  <div class="guia"><b>Para quien conduce:</b> cada pantalla trae en un recuadro como este qué hacer y cuánto tiempo. Lo que escriban se guarda solo en esta computadora. Al final, en «Producto», se imprime o se guarda en PDF el producto de la sesión.</div>
-  <div class="tarjeta"><h3 style="margin-top:0">Ruta sugerida</h3>
-  <ol style="margin:0;padding-left:1.4em">
-    <li><b>Juego</b> de arranque: ¿accesibilidad, Diseño Universal o ajuste razonable? · 10 min</li>
-    <li><b>Nuestros datos:</b> qué barreras se asoman en los EIA · 10 min</li>
-    <li><b>La jornada</b> de un alumno real de la escuela, con nombre ficticio · 20 min</li>
-    <li><b>Priorizar</b> las barreras con los cinco criterios de la SEP · 10 min</li>
-    <li><b>Seis pasos</b> y el cuadro de la SEP · 20 min</li>
-    <li><b>Aptitudes sobresalientes</b> y enriquecimiento · 10 min</li>
-    <li><b>Producto</b> y acuerdos · 10 min</li></ol>
-  <p class="ej">Se puede intercalar con la exposición de cada parte del documento: el juego después de los conceptos (páginas tres a cinco), la jornada y los seis pasos con las páginas ocho a diez.</p></div>`;
-
-V.juego = () => {
-  const J = E.juego, i = Math.min(J.i || 0, CASOS.length), r = J.r || {};
-  const pts = CASOS.map((_, k) => `<i class="${r[k] === undefined ? '' : r[k] === CASOS[k][1] ? 'ok' : 'x'}${k === i ? ' act' : ''}"></i>`).join('');
-  if (i >= CASOS.length) { const bien = CASOS.filter((c, k) => r[k] === c[1]).length;
-    return `<h2>Juego: ¿accesibilidad, Diseño Universal o ajuste razonable?</h2><div class="puntos">${pts}</div>
-      <div class="tarjeta" style="text-align:center"><p class="marcador" style="font-size:44px">El colectivo acertó ${bien} de ${CASOS.length}</p>
-      <p>${bien >= 8 ? 'Tenemos claros los conceptos. ¡Bien!' : 'Los casos que fallamos son justo los que conviene platicar ahora.'}</p>
-      <p class="ej">Lo que más se confunde: aplicar lo mismo a todo el grupo es Diseño Universal, no un ajuste razonable.</p>
-      <div class="fila" style="justify-content:center"><button type="button" class="btn linea" data-j="reini">Volver a jugar</button></div></div>`; }
-  const c = CASOS[i], resp = r[i];
-  return `<h2>Juego: ¿accesibilidad, Diseño Universal o ajuste razonable?</h2>
-    <div class="guia"><b>Cómo se juega (10 min):</b> lee la situación en voz alta; el colectivo vota a mano alzada por cada opción; toca la que ganó. Se revela la respuesta y su explicación.</div>
-    <div class="puntos">${pts}</div><p class="ej">Situación ${i + 1} de ${CASOS.length}</p>
-    <p class="caso">${esc(c[0])}</p>
-    <div class="ops">${OPS.map(([k, t]) => `<button type="button" class="op${resp !== undefined ? (k === c[1] ? ' bien' : ' mal') : ''}" data-k="${k}" ${resp !== undefined ? 'disabled' : ''}>${t}</button>`).join('')}</div>
-    ${resp !== undefined ? `<div class="expl" style="border-color:${resp === c[1] ? 'var(--dua)' : 'var(--no)'}"><b>${resp === c[1] ? '✅ ¡Correcto!' : `❌ Era: ${OPS.find(o => o[0] === c[1])[1]}`}</b><br>${esc(c[2])}</div>
-      <div class="fila" style="margin-top:14px"><button type="button" class="btn" data-j="sig">${i + 1 < CASOS.length ? 'Siguiente situación' : 'Ver resultado'}</button></div>` : ''}`;
+V.abiertas = P => {
+  const L = resp(P.id).map(r => parse(r.v) || {}), q = Math.min(verQ, P.preguntas.length - 1);
+  const muro = L.map(o => o[`q${q}`]).filter(x => x && String(x).trim());
+  return `<div class="chips">${P.preguntas.map((_, n) => `<button type="button" data-q="${n}" aria-pressed="${n === q}">Pregunta ${n + 1}</button>`).join('')}</div>
+    <p class="grande" style="font-size:26px;margin:12px 0">${esc(P.preguntas[q][0])}</p><p class="mini">${muro.length} respuestas</p>
+    <div class="muro">${muro.map(t => `<div>${esc(t)}</div>`).join('') || '<p class="mini">Aún no hay respuestas.</p>'}</div>`;
+};
+V.juego = P => {
+  const i = S.i || 0;
+  if (i >= P.casos.length) {
+    const tot = P.casos.map((c, n) => { const L = resp(P.id, n); return { c, total: L.length, bien: L.filter(r => r.v === c[1]).length }; });
+    const T = tot.reduce((s, x) => s + x.total, 0), B = tot.reduce((s, x) => s + x.bien, 0);
+    const peores = tot.filter(x => x.total).sort((a, b) => a.bien / a.total - b.bien / b.total).slice(0, 3);
+    return `<p class="grande">El colectivo acertó <b>${T ? Math.round(B / T * 100) : 0} %</b> de ${T} respuestas.</p><h3>Las que más costaron</h3>
+      ${peores.map(x => `<div class="caja"><b>${Math.round(x.bien / x.total * 100)} % de aciertos</b>${esc(x.c[0])}<br><span class="mini">Respuesta: ${OPS.find(o => o[0] === x.c[1])[1]}. ${esc(x.c[2])}</span></div>`).join('')}
+      <div class="fila"><button class="btn linea" data-jant>Volver a la última situación</button></div>`;
+  }
+  const c = P.casos[i], L = resp(P.id, i), n = L.length || 1;
+  return `<p class="mini">Situación ${i + 1} de ${P.casos.length}</p><p class="grande" style="font-size:34px;font-weight:700">${esc(c[0])}</p>
+    ${OPS.map(([k, t]) => { const v = L.filter(r => r.v === k).length; return `<div class="barra-v${S.rev && k === c[1] ? ' correcta' : ''}"><span>${S.rev && k === c[1] ? '✅ ' : ''}${t}</span><span class="b"><span style="width:${S.rev ? v / n * 100 : 0}%"></span></span><b>${S.rev ? v : ''}</b></div>`; }).join('')}
+    ${S.rev ? `<div class="caja ok"><b>${OPS.find(o => o[0] === c[1])[1]}</b>${esc(c[2])}</div>` : `<p class="mini">${L.length} respuestas. Los votos se muestran al revelar.</p>`}
+    <div class="fila" style="margin-top:12px">${S.rev ? `<button class="btn" data-jsig>${i + 1 < P.casos.length ? 'Siguiente situación' : 'Ver resultados'}</button>` : '<button class="btn" data-rev>Revelar respuesta</button>'}${i > 0 ? '<button class="btn linea" data-jant>Situación anterior</button>' : ''}</div>`;
+};
+V.jornada = P => {
+  const L = resp(P.id).map(r => parse(r.v) || {}), sel = new Set(S.barreras || []);
+  return `<p class="mini">Toquen las barreras más importantes para llevarlas a priorizar (hasta cinco). Elegidas: ${sel.size}.</p>
+    <div class="cols">${MOMENTOS.map((m, k) => `<div><h4>${m}</h4><div class="muro" style="grid-template-columns:1fr">${L.map(o => o[`m${k}`]).filter(x => x && x.trim()).map(t => `<div class="${sel.has(t.trim()) ? 'sel' : ''}" data-bsel="${esc(t.trim())}" style="cursor:pointer">${esc(t)}</div>`).join('') || '<span class="mini">—</span>'}</div></div>`).join('')}</div>
+    <div class="fila" style="margin-top:10px"><input id="b-otra" placeholder="Agregar otra barrera" style="flex:1;font-size:18px;padding:8px;border-radius:8px;border:1.5px solid var(--linea)"><button class="btn chico" data-badd>Agregar</button></div>
+    ${sel.size ? `<div class="caja aviso"><b>Elegidas para priorizar</b>${[...sel].map(esc).join('<br>')}</div>` : ''}`;
+};
+const promedios = () => { const L = resp('prior').map(r => parse(r.v) || {});
+  return { n: L.length, filas: (S.barreras || []).map((b, n) => { const prom = CRIT.map((_, c) => { const v = L.map(o => +((o[`b${n}`] || {})[c]) || 0).filter(Boolean); return v.length ? v.reduce((a, x) => a + x, 0) / v.length : 0; });
+    return { b, prom, tot: prom.reduce((a, x) => a + x, 0) }; }).sort((a, z) => z.tot - a.tot) }; };
+V.priorizar = () => {
+  if (!(S.barreras || []).length) return '<p class="grande">Primero elijan las barreras en la jornada (toquen las del muro).</p>';
+  const { n, filas } = promedios();
+  return `<table class="tabla"><thead><tr><th>Barrera</th>${CRIT.map(c => `<th style="font-size:14px">${c}</th>`).join('')}<th>Total</th></tr></thead>
+    <tbody>${filas.map((f, k) => `<tr><td>${k === 0 && f.tot ? '🥇 ' : ''}${esc(f.b)}</td>${f.prom.map(x => `<td>${x ? x.toFixed(1) : ''}</td>`).join('')}<td><b style="font-size:22px">${f.tot ? f.tot.toFixed(1) : ''}</b></td></tr>`).join('')}</tbody></table><p class="mini">Promedio de ${n} maestros, de uno a cinco por criterio.</p>`;
+};
+V.pasos = P => {
+  const L = resp(P.id).map(r => parse(r.v) || {}).filter(o => o.ajuste);
+  return `<p class="mini">${L.length} ajustes diseñados</p><div class="muro" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))">${L.map(o => `<div><b>${esc(o.asig || 'Asignatura')}</b><br><span class="mini">Barrera:</span> ${esc(o.barrera || '')}<br><span class="mini">Ajuste:</span> <b>${esc(o.ajuste)}</b><br><span class="mini">Seguimiento:</span> ${esc(o.seguimiento || '')}</div>`).join('')}</div>`;
+};
+V.compromiso = P => {
+  const L = resp(P.id).map(r => parse(r.v) || {}).filter(o => o.txt);
+  return `<p class="mini">${L.length} compromisos</p><div class="muro">${L.map(o => `<div>${esc(o.txt)}<br><span class="mini">${esc(o.asig || '')}</span></div>`).join('')}</div>`;
 };
 
-V.datos = () => `<h2>¿Qué barreras se asoman en nuestros datos?</h2>
-  <div class="guia"><b>Para conducir (10 min):</b> la SEP pregunta en la página catorce: «¿Las actividades permiten demostrar el aprendizaje sin que una barrera influya en el resultado?». Estos datos de los EIA de septiembre ayudan a contestarla.</div>
-  <div class="dato-grande"><div><b>${DATOS.prioritarios}</b>alumnos requieren apoyo en tres o cuatro campos formativos</div><div><b>${DATOS.sinResultado}</b>números de lista sin resultado: no participaron en la evaluación</div><div><b>${DATOS.lectura3[0][1]} %</b>de tercero sacó cero o uno en el uso de la infografía</div></div>
-  <div class="tarjeta" style="margin-top:18px"><h3 style="margin-top:0">Una barrera que cruza todos los campos: la lectura</h3>
-  <p>En tercero, el ${DATOS.mate3[0][1]} % no resolvió el problema de área y perímetro y el ${DATOS.lectura3[1][1]} % no logró la estructura del texto. En primero, la mitad no pudo presentar información en un texto discontinuo, y en los tres grados argumentar es lo más débil (de ${DATOS.argumentar} en cero o uno).</p>
-  <p><b>Pregunta para el colectivo:</b> ¿el alumno que falló en Matemáticas no sabe calcular, o no comprendió la consigna escrita? Si es lo segundo, la barrera no está en él: está en cómo le presentamos la información y en cómo lo evaluamos.</p>
-  <p class="ej">Fuente: reportes oficiales de los EIA Fase 6, 30 de septiembre de 2026. El cruce con la lectura de Raíces y Estrellas está en la plataforma de la escuela.</p></div>
-  <div class="tres"><div style="--c:var(--acc)"><h4>Accesibilidad</h4>Toda la escuela: la plataforma abre en cualquier celular; señalética clara; libros en formato accesible.</div>
-  <div style="--c:var(--dua)"><h4>Diseño Universal</h4>Todo el grupo: consignas leídas en voz alta, apoyos visuales y varias formas de entregar.</div>
-  <div style="--c:var(--aju)"><h4>Ajuste razonable</h4>Un alumno: consigna leída, esquema y más tiempo para quien tiene la barrera de lectura.</div></div>`;
-
-V.jornada = () => `<h2>La jornada de ${CASO.nombre}</h2>
-  <div class="guia"><b>Para conducir (20 min):</b> es un alumno real de la escuela con nombre ficticio. Recorran juntos su día, momento por momento, y escriban lo que el colectivo identifica. Es la tabla de la página ocho del documento.</div>
-  <div class="perfil"><div class="tarjeta"><h3 style="margin-top:0">${CASO.nombre}, ${CASO.grado}</h3>
-    <p><span class="niv">Lenguajes RA</span><span class="niv">Saberes RA</span><span class="niv">Ética RA</span><span class="niv">Humano y comunitario RA</span></p>
-    <p><b>Cero</b> en: ${CASO.ceros.map(esc).join('; ')}.</p><p>${esc(CASO.unos)}</p></div>
-    <div class="tarjeta"><h3 style="margin-top:0">Lo que sabe el colectivo de ${CASO.nombre}</h3>
-    <div class="campo"><label>¿Cómo lee? ¿Cómo escribe?</label><input data-x="lee" value="${esc(E.extra.lee || '')}" placeholder="Ej.: lee despacio, se pierde en textos largos"></div>
-    <div class="campo"><label>Asistencia, conducta, familia</label><input data-x="contexto" value="${esc(E.extra.contexto || '')}" placeholder="Ej.: falta los lunes; la mamá trabaja todo el día"></div>
-    <div class="campo"><label>¿Qué le gusta? ¿En qué destaca?</label><input data-x="fortalezas" value="${esc(E.extra.fortalezas || '')}" placeholder="Ej.: dibuja muy bien, le gusta el futbol"></div></div></div>
-  <table class="tabla"><thead><tr><th>Momento</th><th>¿Qué puede ser una barrera?</th><th>¿Qué recursos favorecen la participación y el aprendizaje?</th><th>¿Qué necesitamos cambiar?</th></tr></thead>
-  <tbody>${MOMENTOS.map((m, k) => `<tr data-fila="${k}"><td>${m}</td>${['b', 'r', 'c'].map(col => `<td><textarea rows="2" data-jor="${k}.${col}">${esc(E.jor[`${k}.${col}`] || '')}</textarea></td>`).join('')}</tr>`).join('')}</tbody></table>`;
-
-V.prior = () => {
-  const auto = MOMENTOS.map((m, k) => (E.jor[`${k}.b`] || '').trim()).filter(Boolean);
-  auto.forEach(t => { if (!E.bar.some(b => b.t === t)) E.bar.push({ t, p: {} }); });
-  guardar();
-  return `<h2>Priorizar las barreras</h2>
-  <div class="guia"><b>Para conducir (10 min):</b> las barreras que escribieron en la jornada ya están aquí. Califiquen cada criterio del uno al cinco, a mano alzada o por consenso. La lista se ordena sola: atiendan primero una o dos.</div>
-  <div class="tarjeta" style="overflow-x:auto"><table class="tabla crit"><thead><tr><th>Barrera</th>${CRIT.map(c => `<th>${c}</th>`).join('')}<th>Total</th><th></th></tr></thead>
-  <tbody>${E.bar.map((b, k) => `<tr><td><textarea rows="2" data-bt="${k}">${esc(b.t)}</textarea></td>${CRIT.map((_, c) => `<td><input type="number" min="1" max="5" data-bp="${k}.${c}" value="${b.p[c] || ''}"></td>`).join('')}<td><b style="font-size:24px" id="tot-${k}">${totalB(b) || ''}</b></td><td><button type="button" class="btn linea chico" data-bx="${k}">✕</button></td></tr>`).join('')}</tbody></table>
-  <div class="fila" style="margin-top:10px"><button type="button" class="btn linea chico" data-badd>+ Agregar otra barrera</button></div></div>
-  <div id="rank">${rankHTML()}</div>`;
-};
-const totalB = b => CRIT.reduce((s, _, k) => s + (+b.p[k] || 0), 0);
-function rankHTML() {
-  const orden = E.bar.map((b, k) => ({ b, k, s: totalB(b) })).sort((a, z) => z.s - a.s);
-  return `${orden.some(o => o.s) ? `<div class="tarjeta rank"><h3 style="margin-top:0">Barreras prioritarias</h3>${orden.filter(o => o.s).slice(0, 3).map((o, n) => `<p><b>${n + 1}</b>${esc(o.b.t)} <span class="ej">(${o.s} de 25)</span></p>`).join('')}
-    <button type="button" class="btn" data-usar="${orden[0].k}">Llevar la primera a los seis pasos</button></div>` : ''}`;
+/* ---------- Navegación ---------- */
+function avanzar(d) {
+  const k = S.k || 0, P = PASOS[k];
+  if (P.t === 'dia' && d > 0 && (S.r || 0) < P.partes.length) return mover({ r: (S.r || 0) + 1 });
+  if (P.t === 'dia' && d < 0 && (S.r || 0) > 0) return mover({ r: (S.r || 0) - 1 });
+  const n = k + d; if (n < 0 || n >= PASOS.length) return;
+  verQ = 0; mover({ k: n, r: d > 0 ? 0 : PASOS[n].t === 'dia' ? PASOS[n].partes.length : 0 });
 }
+$('#sig').onclick = () => S && avanzar(1);
+$('#ant').onclick = () => S && avanzar(-1);
+$('#guia').onclick = () => { guia = !guia; $('#guia').textContent = guia ? 'Ocultar guía' : 'Ver guía'; pintar(); };
+addEventListener('keydown', e => { if (!S || /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) return; if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); avanzar(1); } if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); avanzar(-1); } });
+document.addEventListener('click', e => {
+  const b = e.target.closest('button,[data-bsel]'); if (!b || !S) return;
+  if (b.dataset.q) { verQ = +b.dataset.q; pintarVivo(); }
+  else if (b.dataset.rev !== undefined) mover({ rev: true });
+  else if (b.dataset.jsig !== undefined) mover({ i: (S.i || 0) + 1, rev: false });
+  else if (b.dataset.jant !== undefined) mover({ i: Math.max(0, (S.i || 0) - 1), rev: true });
+  else if (b.dataset.bsel !== undefined) { const t = b.dataset.bsel, B = [...(S.barreras || [])]; const x = B.indexOf(t); if (x >= 0) B.splice(x, 1); else if (B.length < 5) B.push(t); mover({ barreras: B }); }
+  else if (b.dataset.badd !== undefined) { const t = $('#b-otra').value.trim(); if (t && (S.barreras || []).length < 5) mover({ barreras: [...(S.barreras || []), t] }); }
+  else if (b.dataset.qr !== undefined) { const w = document.createElement('div'); w.style.cssText = 'position:fixed;inset:0;background:rgba(14,22,48,.8);display:flex;align-items:center;justify-content:center;z-index:20'; w.innerHTML = '<div class="qr" id="qr-big" style="width:440px"></div>'; w.onclick = () => w.remove(); document.body.appendChild(w); ponerQR('#qr-big'); }
+  else if (b.dataset.prod !== undefined) { $('#impresion').innerHTML = producto(); setTimeout(() => print(), 300); }
+  else if (b.dataset.cerrar !== undefined) { if (confirm('¿Cerrar la sesión? Los celulares ya no podrán contestar. Imprime antes el producto.')) { updateDoc(doc(db, 'cte', sid), { activo: false }).then(() => { localStorage.removeItem('cte_sid'); sid = ''; S = null; desuscribir.forEach(f => f()); inicio(); }); } }
+});
 
-V.pasos = () => {
-  const p = E.pasoAct || 0;
-  return `<h2>Los seis pasos para un ajuste razonable</h2>
-  <div class="guia"><b>Para conducir (20 min):</b> con la barrera prioritaria, recorran los seis pasos de la página nueve. Debajo de cada uno hay un ejemplo de guía. Al final, el cuadro de la página diez se llena casi solo con lo que escribieron.</div>
-  <div class="pasos">${PASOS.map(([k, t], n) => `<div class="${n <= p ? 'on' : ''}" data-ir="${n}">${n + 1}. ${t}</div>`).join('')}</div>
-  <div class="tarjeta">${PASOS.map(([k, t, q, ej], n) => `<div class="campo" ${n > p ? 'hidden' : ''}><label><span class="paso-ayuda">${n + 1}. ${t}:</span> ${q}</label><textarea rows="2" data-p="${k}">${esc(E.pasos[k] || '')}</textarea><p class="ej">${esc(ej)}</p></div>`).join('')}
-  ${p < PASOS.length - 1 ? '<button type="button" class="btn" data-pmas>Siguiente paso</button>' : ''}</div>
-  ${p >= PASOS.length - 1 ? `<div class="tarjeta"><h3 style="margin-top:0">Cuadro de la SEP</h3><table class="tabla"><tbody>${CUADRO.map(([k, t]) => `<tr><td>${t}</td><td><textarea rows="2" data-c="${k}">${esc(E.cuadro[k] ?? prellenar(k))}</textarea></td></tr>`).join('')}</tbody></table></div>` : ''}`;
-};
-function prellenar(k) {
-  const P = E.pasos;
-  return { bap: P.barrera || '', ajustes: P.ajuste || '', evidencia: P.seguimiento || '', resp: (P.implementa || '').split(',')[0] || '', particip: P.situacion || '', nna: `${CASO.nombre} (${CASO.grado}) y alumnos con la misma barrera` }[k] || '';
-}
-
-V.sobres = () => `<h2>Aptitudes sobresalientes: también son ajustes razonables</h2>
-  <div class="guia"><b>Para conducir (10 min):</b> la SEP dice que no se trata de darles más trabajo ni de adelantarles temas, sino de enriquecer el currículo ligado a lo que ve el grupo (página seis).</div>
-  <div class="dato-grande"><div><b style="color:var(--dua)">${DATOS.sobresalientes}</b>alumnos con aprendizaje desarrollado en tres o cuatro campos formativos</div>
-  <div style="grid-column:span 2"><p style="margin:0">Son candidatos a enriquecimiento, no un diagnóstico. Siete son del mismo grupo de primero, por lo que antes conviene revisar en academia cómo se valoró la rúbrica en ese grupo.</p></div></div>
-  <div class="tarjeta" style="margin-top:18px"><h3 style="margin-top:0">Ideas de enriquecimiento desde Lenguajes</h3>
-  <ul><li>Coordinar el periódico o la radio escolar con los temas del grupo.</li><li>Preparar a sus compañeros para el concurso de oratoria o declamación.</li><li>Escribir textos de divulgación sobre lo que se investiga en Ciencias, con fuentes reales.</li><li>Moderar debates en clase y redactar la relatoría.</li><li>Crear infografías que el grupo use como material de estudio.</li></ul>
-  <div class="campo"><label>Idea que acuerda el colectivo</label><textarea rows="2" data-x="enriq">${esc(E.extra.enriq || '')}</textarea></div></div>`;
-
-V.producto = () => `<h2>Producto de la sesión y acuerdos</h2>
-  <div class="guia"><b>Para conducir (10 min):</b> escriban los acuerdos y toquen «Imprimir o guardar en PDF». Sale en tamaño carta con la portada de la escuela, como evidencia del Consejo.</div>
-  <div class="tarjeta"><div class="campo"><label>Acuerdos del colectivo (para el Programa de mejora continua)</label><textarea rows="5" data-x="acuerdos">${esc(E.extra.acuerdos || '')}</textarea><p class="ej">Ej.: A partir de diciembre, en todas las asignaturas las consignas de examen se leen en voz alta y llevan un esquema; los tutores identifican a los alumnos con barrera de lectura para darles ajuste razonable.</p></div>
-  <div class="campo"><label>Quiénes expusieron</label><input data-x="exponen" value="${esc(E.extra.exponen || '')}" placeholder="Docentes del campo formativo de Lenguajes"></div>
-  <div class="fila"><button type="button" class="btn" data-imp>🖨️ Imprimir o guardar en PDF</button><button type="button" class="btn linea" data-borrar>Borrar todo y empezar de nuevo</button></div></div>`;
-
-/* ---------- Producto impreso ---------- */
+/* ---------- Producto en carta ---------- */
 function producto() {
-  const fila = (t, v) => `<tr><th style="width:30%">${t}</th><td>${esc(v || '')}</td></tr>`;
-  const J = E.juego.r || {}, aciertos = CASOS.filter((c, k) => J[k] === c[1]).length;
+  const nombres = [...conectados()].sort((a, b) => a.localeCompare(b, 'es'));
+  const acts = PASOS.filter(p => p.t === 'act');
+  const part = n => acts.filter(a => R.some(r => r.p === n && r.act === a.id)).length;
+  const lista = (act, f) => resp(act).map(r => parse(r.v) || {}).map(f).filter(Boolean);
+  const J = PASOS.find(p => p.tipo === 'juego'), jt = J ? J.casos.map((c, n) => { const L = resp('juego', n); return [L.length, L.filter(r => r.v === c[1]).length]; }) : [];
+  const jT = jt.reduce((s, x) => s + x[0], 0), jB = jt.reduce((s, x) => s + x[1], 0);
+  const abiertas = P => P.preguntas.map((q, n) => `<h3 style="font-size:10.5pt;margin:6pt 0 2pt">${esc(q[0])}</h3><ul style="margin:0 0 4pt">${lista(P.id, o => o[`q${n}`] && `<li>${esc(o[`q${n}`])}</li>`).join('') || '<li>Sin respuestas.</li>'}</ul>`).join('');
+  const ref = PASOS.find(p => p.id === 'refl'), ana = PASOS.find(p => p.id === 'analisis');
+  const comp = resp('compromiso').map(r => ({ p: r.p, o: parse(r.v) || {} })).filter(x => x.o.txt).sort((a, b) => a.p.localeCompare(b.p, 'es'));
   return `<div class="p-cab"><img src="logo-escuela.jpg" alt=""><div><b>Escuela Secundaria Técnica N.° 17 · Turno Vespertino</b><span>C.C.T. 04DST0017E · San Francisco de Campeche, Campeche · Ciclo escolar 2026-2027</span></div></div>
   <h1>Consejo Técnico Escolar · Ajustes razonables en la atención de niñas, niños y adolescentes con discapacidad y aptitudes sobresalientes</h1>
-  <p>Fecha: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}. Expone: ${esc(E.extra.exponen || 'Campo formativo de Lenguajes')}.${Object.keys(J).length ? ` Juego de conceptos: el colectivo acertó ${aciertos} de ${CASOS.length}.` : ''}</p>
-  <h2>1. Caso analizado: ${CASO.nombre}, ${CASO.grado} (nombre ficticio)</h2>
-  <table>${fila('Resultados EIA', CASO.niveles)}${fila('Lectura y escritura', E.extra.lee)}${fila('Contexto', E.extra.contexto)}${fila('Fortalezas', E.extra.fortalezas)}</table>
-  <h2>2. Lectura de la realidad: la jornada</h2>
-  <table><thead><tr><th>Momento</th><th>¿Qué puede ser una barrera?</th><th>¿Qué recursos favorecen?</th><th>¿Qué necesitamos cambiar?</th></tr></thead><tbody>${MOMENTOS.map((m, k) => `<tr><td>${m}</td><td>${esc(E.jor[`${k}.b`] || '')}</td><td>${esc(E.jor[`${k}.r`] || '')}</td><td>${esc(E.jor[`${k}.c`] || '')}</td></tr>`).join('')}</tbody></table>
-  <h2>3. Barreras priorizadas</h2>
-  <table><thead><tr><th>Barrera</th>${CRIT.map(c => `<th>${c}</th>`).join('')}<th>Total</th></tr></thead><tbody>${E.bar.map(b => ({ b, s: CRIT.reduce((s, _, k) => s + (+b.p[k] || 0), 0) })).sort((a, z) => z.s - a.s).map(({ b, s }) => `<tr><td>${esc(b.t)}</td>${CRIT.map((_, k) => `<td>${b.p[k] || ''}</td>`).join('')}<td>${s}</td></tr>`).join('')}</tbody></table>
-  <h2>4. Los seis pasos</h2><table>${PASOS.map(([k, t]) => fila(t, E.pasos[k])).join('')}</table>
-  <h2>5. Cuadro de ajustes razonables</h2><table>${CUADRO.map(([k, t]) => fila(t, E.cuadro[k] ?? prellenar(k))).join('')}</table>
-  <h2>6. Aptitudes sobresalientes: enriquecimiento acordado</h2><p>${esc(E.extra.enriq || '')}</p>
-  <h2>7. Acuerdos del colectivo</h2><p style="white-space:pre-wrap">${esc(E.extra.acuerdos || '')}</p>
+  <p>Fecha: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}. Expone: campo formativo de Lenguajes. Participaron ${nombres.length} docentes desde su celular.</p>
+  <h2>1. Participación</h2><table><thead><tr><th>Docente</th><th>Actividades contestadas (de ${acts.length})</th></tr></thead><tbody>${nombres.map(n => `<tr><td>${esc(n)}</td><td>${part(n)}</td></tr>`).join('')}</tbody></table>
+  <h2>2. Juego de conceptos</h2><p>El colectivo acertó ${jT ? Math.round(jB / jT * 100) : 0} % de ${jT} respuestas.</p>
+  <h2>3. Reflexión inicial</h2>${ref ? abiertas(ref) : ''}
+  <h2>4. Análisis de nuestros datos</h2>${ana ? abiertas(ana) : ''}
+  <h2>5. La jornada de ${CASO.nombre}: barreras identificadas</h2><table><tbody>${MOMENTOS.map((m, k) => `<tr><th style="width:24%">${m}</th><td>${lista('jornada', o => o[`m${k}`] && esc(o[`m${k}`])).join('<br>')}</td></tr>`).join('')}</tbody></table>
+  <h2>6. Barreras priorizadas (promedio del colectivo)</h2><table><tbody>${promedios().filas.map((x, n) => `<tr><td style="width:6%">${n + 1}</td><td>${esc(x.b)}</td><td style="width:14%">${x.tot.toFixed(1)} de 25</td></tr>`).join('')}</tbody></table>
+  <h2>7. Ajustes razonables diseñados</h2><table><thead><tr><th>Asignatura</th>${SEIS.map(s => `<th>${s[1]}</th>`).join('')}</tr></thead><tbody>${lista('ajuste', o => o.ajuste && `<tr><td>${esc(o.asig || '')}</td>${SEIS.map(s => `<td>${esc(o[s[0]] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table>
+  <h2>8. Compromisos de cada docente</h2><table><thead><tr><th style="width:30%">Docente</th><th>Compromiso</th></tr></thead><tbody>${comp.map(x => `<tr><td>${esc(x.p)}<br><small>${esc(x.o.asig || '')}</small></td><td>${esc(x.o.txt)}</td></tr>`).join('')}</tbody></table>
   <div class="p-firmas"><div>Docentes del campo formativo de Lenguajes</div><div>Dirección / Subdirección</div></div>`;
 }
-
-/* ---------- Navegación y eventos ---------- */
-function pintar() {
-  E.sec = sec; guardar();
-  $('#nav').innerHTML = SECC.map(([k, t]) => `<button type="button" data-s="${k}" aria-pressed="${k === sec}">${t}</button>`).join('');
-  $('#vista').innerHTML = V[sec]();
-  const n = SECC.findIndex(s => s[0] === sec);
-  $('#donde').textContent = `${n + 1} de ${SECC.length} · ${SECC[n][1]}`;
-  $('#ant').disabled = n === 0; $('#sig').disabled = n === SECC.length - 1;
-  scrollTo(0, 0);
-}
-document.addEventListener('click', e => {
-  const t = e.target.closest('button'); if (!t) return;
-  if (t.dataset.s) { sec = t.dataset.s; pintar(); return; }
-  if (t.id === 'sig' || t.id === 'ant') { const n = SECC.findIndex(s => s[0] === sec) + (t.id === 'sig' ? 1 : -1); if (SECC[n]) { sec = SECC[n][0]; pintar(); } return; }
-  const J = E.juego;
-  if (t.classList.contains('op')) { (J.r ||= {})[J.i || 0] = t.dataset.k; guardar(); pintar(); return; }
-  if (t.dataset.j === 'sig') { J.i = (J.i || 0) + 1; guardar(); pintar(); return; }
-  if (t.dataset.j === 'reini') { E.juego = {}; guardar(); pintar(); return; }
-  if (t.dataset.badd !== undefined) { E.bar.push({ t: '', p: {} }); guardar(); pintar(); return; }
-  if (t.dataset.bx) { E.bar.splice(+t.dataset.bx, 1); guardar(); pintar(); return; }
-  if (t.dataset.usar) { const b = E.bar[+t.dataset.usar]; if (b) E.pasos.barrera = b.t; sec = 'pasos'; guardar(); pintar(); return; }
-  if (t.dataset.pmas !== undefined) { E.pasoAct = Math.min((E.pasoAct || 0) + 1, PASOS.length - 1); guardar(); pintar(); return; }
-  if (t.dataset.imp !== undefined) { $('#impresion').innerHTML = producto(); setTimeout(() => print(), 300); return; }
-  if (t.dataset.borrar !== undefined) { if (confirm('¿Borrar todo lo escrito en esta sesión? No se puede deshacer.')) { localStorage.removeItem(CLAVE); location.reload(); } return; }
-});
-document.addEventListener('click', e => { const d = e.target.closest('.pasos [data-ir]'); if (d) { E.pasoAct = Math.max(E.pasoAct || 0, +d.dataset.ir); guardar(); pintar(); } });
-document.addEventListener('input', e => {
-  const x = e.target, d = x.dataset;
-  if (d.jor) E.jor[d.jor] = x.value;
-  else if (d.x) E.extra[d.x] = x.value;
-  else if (d.bt) E.bar[+d.bt].t = x.value;
-  else if (d.bp) { const [b, c] = d.bp.split('.'); E.bar[+b].p[c] = Math.max(1, Math.min(5, +x.value || 0)) || ''; const t = document.getElementById('tot-' + b); if (t) t.textContent = totalB(E.bar[+b]) || ''; const r = document.getElementById('rank'); if (r) r.innerHTML = rankHTML(); }
-  else if (d.p) E.pasos[d.p] = x.value;
-  else if (d.c) E.cuadro[d.c] = x.value;
-  else return;
-  guardar();
-});
-document.addEventListener('focusin', e => { const tr = e.target.closest('tr[data-fila]'); document.querySelectorAll('tr[data-fila]').forEach(r => r.classList.toggle('act', r === tr)); });
-addEventListener('keydown', e => { if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return; if (e.key === 'ArrowRight' || e.key === 'PageDown') $('#sig').click(); if (e.key === 'ArrowLeft' || e.key === 'PageUp') $('#ant').click(); });
-pintar();
-})();

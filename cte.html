@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTE en vivo · EST 17</title>
+<meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@700;800&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--noche:#16213F;--oro:#E3B85C;--papel:#FFFDF7;--perg:#F4ECDD;--linea:#E3D7BF;--tinta:#2A241D;--tinta2:#6B6257;--verde:#2E8B57;--rojo:#C8403A}
+*{box-sizing:border-box}
+body{margin:0;background:var(--perg);color:var(--tinta);font:18px/1.45 'Alegreya Sans',system-ui,sans-serif}
+header{background:var(--noche);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2}
+header b{font:800 19px Alegreya,serif;color:#F3DDA8}header small{color:#C9D1EA}
+main{max-width:640px;margin:0 auto;padding:16px 14px 60px}
+h1,h2{font:800 25px/1.2 Alegreya,serif;color:var(--noche);margin:6px 0 10px}
+.tarjeta{background:var(--papel);border:2px solid var(--linea);border-radius:16px;padding:16px;margin:0 0 14px}
+.instr{color:var(--tinta2);font-size:16px;margin:0 0 10px}
+label{display:block;font-weight:700;color:var(--noche);margin:12px 0 4px}
+textarea,input,select{width:100%;font:17px 'Alegreya Sans',sans-serif;border:1.5px solid #CDBB98;border-radius:10px;padding:10px;background:#fff}
+textarea{min-height:84px;resize:vertical}
+.ej{font-size:14px;color:var(--tinta2);margin:4px 0 0;background:#F6EEDC;border-radius:8px;padding:5px 8px}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:15px;font:700 19px 'Alegreya Sans',sans-serif;background:var(--oro);color:var(--noche);margin-top:14px;cursor:pointer}
+.btn:disabled{opacity:.6}
+.op{display:block;width:100%;text-align:left;border:2.5px solid var(--linea);background:#fff;border-radius:14px;padding:14px;margin:8px 0;font:700 18px 'Alegreya Sans',sans-serif;cursor:pointer;color:var(--noche)}
+.op.sel{border-color:var(--noche);background:#E8ECF7}
+.op.bien{border-color:var(--verde);background:#DFF1E5}.op.mal{border-color:var(--rojo);background:#F8E1DF}
+.caso{font:700 21px/1.35 Alegreya,serif;color:var(--noche)}
+.ok{color:var(--verde);font-weight:700;text-align:center;margin-top:10px}
+.err{color:var(--rojo);font-weight:700}
+.espera{text-align:center;padding:30px 10px}.espera b{display:block;font:800 24px Alegreya,serif;color:var(--noche);margin:8px 0}
+.crit{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;font-size:15px}
+.crit select{width:auto;padding:6px}
+.barr{border-left:6px solid var(--oro);padding-left:10px;margin:14px 0 6px;font-weight:700}
+</style>
+</head>
+<body>
+<header><b>CTE en vivo · EST 17</b><small id="yo"></small></header>
+<main id="vista"><p>Cargando…</p></main>
+<script src="cte-datos.js?v=2026112702"></script>
+<script type="module" src="cte.js?v=2026112702"></script>
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
+</body>
+</html>
