@@ -3262,10 +3262,14 @@ async function tabResultadosEIA() {
   if (!cvCargar('cv-eia')) return;
   const panel = $('#panel'); panel.innerHTML = '<div class="tarjeta"><p class="cargando">Cargando resultados…</p></div>';
   try {
-    const { tabEIA } = await import('./eia.js?v=2026112601');
+    const { tabEIA } = await import('./eia.js?v=2026112701');
     const porNombre = {};
     (incA.lista || []).forEach(i => { const k = normal(nomInc(i)).replace(/\s+/g, ' ') + '|' + grpInc(i); porNombre[k] = (porNombre[k] || 0) + 1; });
-    await tabEIA({ db, panel, aviso, abrirModal, imprimir, reportesDe: (nombre, g) => porNombre[normal(nombre).replace(/\s+/g, ' ') + '|' + g] || 0 });
+    const act = estado.alumnos.filter(a => a.estado === 'activo'), matricula = {};
+    act.forEach(a => { const g = `${a.grado}${a.grupo}`; matricula[g] = (matricula[g] || 0) + 1; });
+    const sems = new Set(SEMANAS.map(x => x.sem)), idx = indiceAplicadas(), om = omitidas();
+    const plat = act.map(a => ({ nombre: nombreCompleto(a), g: `${a.grado}${a.grupo}`, lectura: statsAlumno(a, sems, estado.califs, idx, om).prom ?? null }));
+    await tabEIA({ db, panel, aviso, abrirModal, imprimir, matricula, plat, reportesDe: (nombre, g) => porNombre[normal(nombre).replace(/\s+/g, ' ') + '|' + g] || 0 });
   } catch (e) { console.error(e); panel.innerHTML = '<div class="tarjeta"><p>No se pudieron cargar los resultados. Recarga la página.</p></div>'; }
 }
 function cvCargar(tab, fn) {

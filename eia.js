@@ -3,7 +3,7 @@
    datos a revisar y una presentación para el Consejo Técnico que se arma paso a paso.
    Los totales vienen en eia-datos.js; la lista de alumnos va cifrada (AES-GCM) y se abre con la clave,
    que se guarda en reportes/_eia/privado/clave (solo la cuenta directiva la puede leer). */
-import { EIA } from './eia-datos.js?v=2026112601';
+import { EIA } from './eia-datos.js?v=2026112701';
 import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const C = ['LEN', 'SPC', 'ENS', 'HYC'];
@@ -74,12 +74,54 @@ const leyenda = () => `<div class="eia-ley">${L.map(l => `<span><i style="backgr
 const leyendaV = () => `<div class="eia-ley">${CV.map((c, k) => `<span><i style="background:${c}"></i>Valoración ${k}</span>`).join('')}</div>`;
 const chip = l => `<span class="eia-chip" style="background:${CL[l]}">${l}</span>`;
 
+/* ---------- Comparativos con el estado y cruces con la plataforma ---------- */
+const R = EIA.ref;
+const pctNiv = (niv, n) => niv.map(x => Math.round(x / n * 100));
+const escCampo = c => pctNiv(EIA.niv[c], EIA.n);
+const escGrado = (g, c) => pctNiv(EIA.grados[g].niv[c], EIA.grados[g].n);
+const ap = v => v[0] + v[1];              // % en Sin evidencias + Requiere apoyo
+const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-zñ ]/g, ' ').replace(/\s+/g, ' ').trim();
+function cobertura() {
+  const m = ctx?.matricula || {};
+  const filas = EIA.grupos.map(g => ({ id: g.id, ev: g.n, mat: m[g.id] || 0 }));
+  const ev = suma(filas.map(f => f.ev)), mat = suma(filas.map(f => f.mat));
+  return { filas, ev, mat, ok: mat >= ev && filas.every(f => f.mat >= f.ev * .8) };
+}
+let cacheCruce = null;
+function cruces() {
+  if (!alumnos || !ctx?.plat) return null;
+  if (cacheCruce) return cacheCruce;
+  const porG = {}; ctx.plat.forEach(a => (porG[a.g] ||= []).push({ ...a, k: norm(a.nombre), t: new Set(norm(a.nombre).split(' ')) }));
+  const unir = a => { const L = porG[a.g] || [], k = norm(a.nombre); let m = L.find(x => x.k === k); if (m) return m;
+    const t = k.split(' '); let mejor = null, best = 0; L.forEach(x => { const n = t.filter(w => x.t.has(w)).length; if (n > best) { best = n; mejor = x; } }); return best >= Math.min(3, t.length) ? mejor : null; };
+  const filas = alumnos.map(a => { const m = unir(a); return { a, lect: m?.lectura ?? null, rep: ctx.reportesDe(a.nombre, a.g), pri: esPrioritario(a), pts: suma(Object.values(a.v)) / Object.keys(a.v).length }; });
+  const conL = filas.filter(f => f.lect != null);
+  const promDe = A => A.length ? Math.round(suma(A) / A.length * 10) / 10 : null;
+  const porNivelLEN = Object.fromEntries(L.map(l => [l, promDe(conL.filter(f => f.a.niv.LEN === l).map(f => f.lect))]));
+  const corr = (() => { const n = conL.length; if (n < 8) return null; const x = conL.map(f => f.pts), y = conL.map(f => f.lect), mx = suma(x) / n, my = suma(y) / n;
+    const sxy = suma(x.map((v, k) => (v - mx) * (y[k] - my))), sx = Math.sqrt(suma(x.map(v => (v - mx) ** 2))), sy = Math.sqrt(suma(y.map(v => (v - my) ** 2))); return sx && sy ? Math.round(sxy / sx / sy * 100) / 100 : null; })();
+  const pri = filas.filter(f => f.pri), noPri = filas.filter(f => !f.pri);
+  cacheCruce = { n: filas.length, conL: conL.length, porNivelLEN, corr,
+    priLectRoja: pri.filter(f => f.lect != null && f.lect < 6).length, priConLect: pri.filter(f => f.lect != null).length,
+    restoLectRoja: noPri.filter(f => f.lect != null && f.lect < 6).length, restoConLect: noPri.filter(f => f.lect != null).length,
+    priConRep: pri.filter(f => f.rep > 0).length, nPri: pri.length, restoConRep: noPri.filter(f => f.rep > 0).length, nResto: noPri.length,
+    repPri: promDe(pri.map(f => f.rep)), repResto: promDe(noPri.map(f => f.rep)) };
+  return cacheCruce;
+}
+const fuerza = r => r == null ? '' : Math.abs(r) >= .5 ? 'fuerte' : Math.abs(r) >= .3 ? 'moderada' : 'débil';
+const PCT = n => n == null ? '—' : `${n} %`;
+function metas() {
+  const M = [];
+  [1, 2, 3].forEach(g => C.forEach(c => { const e = ap(escGrado(g, c)), s = ap(R.grado[g][c]); if (e - s >= 8) M.push({ g, c, e, s }); }));
+  return M.sort((a, b) => (b.e - b.s) - (a.e - a.s));
+}
+
 /* ---------- Pestaña ---------- */
 export async function tabEIA(c) {
   ctx = c;
   const p = ctx.panel;
   if (!alumnos) await intentarAbrir();
-  const SUBS = [['resumen', 'Resumen'], ['grupo', 'Por grupo'], ['aprend', 'Aprendizajes'], ['prior', 'Alumnos prioritarios'], ['revisar', 'Datos a revisar']];
+  const SUBS = [['resumen', 'Resumen'], ['comp', 'Frente al estado'], ['grupo', 'Por grupo'], ['aprend', 'Aprendizajes'], ['prior', 'Alumnos prioritarios'], ['cruces', 'Lectura y conducta'], ['revisar', 'Datos a revisar']];
   p.innerHTML = `<div class="tarjeta eia-cab">
       <div><p class="eia-kicker">Ejercicios Integradores del Aprendizaje · Fase 6</p>
       <h2>Resultados EIA del turno vespertino</h2>
@@ -102,7 +144,7 @@ export async function tabEIA(c) {
     ab.addEventListener('click', ir);
     p.querySelector('#eia-clave').addEventListener('keydown', e => { if (e.key === 'Enter') ir(); });
   }
-  ({ resumen: vResumen, grupo: vGrupo, aprend: vAprend, prior: vPrior, revisar: vRevisar })[sub](p.querySelector('#eia-cuerpo'));
+  ({ resumen: vResumen, comp: vComp, grupo: vGrupo, aprend: vAprend, prior: vPrior, cruces: vCruces, revisar: vRevisar })[sub](p.querySelector('#eia-cuerpo'));
 }
 
 function vResumen(el) {
@@ -118,6 +160,32 @@ function vResumen(el) {
     <div class="tarjeta"><h3>Por grupo</h3>${leyenda()}
     <div class="eia-tabla-g"><span></span>${C.map(c => `<b>${c}</b>`).join('')}${EIA.grupos.map(g => `<b>${nomG(g.id)} <small>(${g.n})</small></b>${C.map(c => barra(g.niv[c], { etiquetas: false })).join('')}`).join('')}</div></div>`;
 }
+
+function vComp(el) {
+  const fila = (t, v, marca = '') => `<div class="eia-fila chica2${marca}"><span class="eia-et">${t}</span>${barraPct(v)}</div>`;
+  el.innerHTML = `<div class="tarjeta"><h3>Nuestra escuela frente al estado y la zona</h3><p class="ayuda">Fuente: ${esc(R.fuente)}. Zona escolar de secundarias técnicas ${R.zona.clave}.</p>${leyenda()}
+    ${C.map(c => `<h4 class="eia-h4" style="color:${CC[c]}">${NC[c]}</h4>${fila('Nuestra escuela', escCampo(c), ' esc')}${fila('Técnicas del estado', R.tecnicas[c])}${fila('Secundarias del municipio', R.municipio[c])}${fila('Zona escolar', R.zona[c])}
+      <p class="ayuda">Requiere apoyo: nosotros ${ap(escCampo(c))} %, técnicas del estado ${ap(R.tecnicas[c])} %, zona ${ap(R.zona[c])} %. Aprendizaje desarrollado: nosotros ${escCampo(c)[3]} %, estado ${R.tecnicas[c][3]} %, zona ${R.zona[c][3]} %.</p>`).join('')}</div>
+    <div class="tarjeta"><h3>Cada grado frente al mismo grado en el estado</h3><p class="ayuda">Porcentaje en «Requiere apoyo» o «Sin evidencias». En rojo, donde estamos ocho puntos o más arriba del estado; en verde, donde estamos mejor.</p>
+    <div class="eia-calor"><span></span>${C.map(c => `<b style="color:${CC[c]}">${c}</b>`).join('')}
+    ${[1, 2, 3].map(g => `<b>${ORD[g]}</b>${C.map(c => { const e = ap(escGrado(g, c)), s = ap(R.grado[g][c]), d = e - s; return `<span class="${d >= 8 ? 'eia-mal' : d <= -3 ? 'eia-bien' : ''}">${e} % <small>estado ${s} %</small></span>`; }).join('')}`).join('')}</div></div>
+    <div class="tarjeta"><h3>Lo que la SEDUC recomienda para secundaria</h3>${C.map(c => `<p><b style="color:${CC[c]}">${NC[c]}:</b> ${esc(R.recom[c])}</p>`).join('')}</div>
+    <div class="tarjeta"><h3>Metas para la siguiente aplicación</h3><p class="ayuda">Donde estamos ocho puntos o más arriba del estado en «Requiere apoyo», la meta es llegar al promedio estatal.</p>
+    ${metas().map(m => `<p>• <b>${ORD[m.g]}, ${NC[m.c]}:</b> bajar de ${m.e} % a ${m.s} % que requiere apoyo.</p>`).join('') || '<p>Estamos dentro del promedio estatal en todos los grados.</p>'}</div>`;
+}
+function vCruces(el) {
+  const cb = cobertura(), X = cruces();
+  el.innerHTML = `<div class="tarjeta"><h3>Cobertura: cuántos presentaron</h3>${cb.ok ? `<p class="ayuda">Matrícula actual de la plataforma (noviembre) contra alumnos con resultado en septiembre.</p>
+    ${cb.filas.map(f => `<div class="eia-fila chica2"><span class="eia-et">${nomG(f.id)}</span><span class="eia-it-b" style="height:22px"><span style="width:${Math.min(100, pct(f.ev, f.mat))}%;background:#2E8B57"></span></span><b style="min-width:7rem;text-align:right">${f.ev} de ${f.mat} · ${pct(f.ev, f.mat)} %</b></div>`).join('')}
+    <p><b>Total: ${cb.ev} de ${cb.mat} alumnos (${pct(cb.ev, cb.mat)} %).</b></p>` : '<p class="ayuda">No se pudo leer la matrícula.</p>'}</div>
+    <div class="tarjeta"><h3>Comprensión lectora y EIA</h3>${X ? `<p class="ayuda">Promedio de lectura en Raíces y Estrellas (de cero a diez) según el nivel en Lenguajes de los EIA. Se pudieron cruzar ${X.conL} de ${X.n} alumnos.</p>
+      ${L.filter(l => X.porNivelLEN[l] != null).map(l => `<div class="eia-fila chica2"><span class="eia-et" style="--c:${CL[l]}">${NL[l]}</span><span class="eia-it-b" style="height:22px"><span style="width:${X.porNivelLEN[l] * 10}%;background:${CL[l]}"></span></span><b style="min-width:3rem;text-align:right">${X.porNivelLEN[l]}</b></div>`).join('')}
+      ${X.corr != null ? `<p>Relación entre el resultado de los EIA y la lectura: <b>${fuerza(X.corr)}</b> (coeficiente ${X.corr}).</p>` : ''}
+      <p>De los prioritarios con calificación de lectura, <b>${X.priLectRoja} de ${X.priConLect}</b> están en rojo (menos de seis). En el resto de los alumnos son ${X.restoLectRoja} de ${X.restoConLect}.</p>` : '<p class="ayuda">🔒 Abre la lista de alumnos con la clave para hacer el cruce.</p>'}</div>
+    <div class="tarjeta"><h3>Conducta y EIA</h3>${X ? `<p><b>${X.priConRep} de ${X.nPri}</b> alumnos prioritarios tienen al menos un reporte de conducta (${pct(X.priConRep, X.nPri)} %). En el resto: ${X.restoConRep} de ${X.nResto} (${pct(X.restoConRep, X.nResto)} %).</p>
+      <p>Reportes por alumno: prioritarios ${X.repPri ?? 0}, resto ${X.repResto ?? 0}.</p><p class="ayuda">Los reportes salen de lo registrado en la plataforma en este ciclo.</p>` : '<p class="ayuda">🔒 Abre la lista de alumnos con la clave para hacer el cruce.</p>'}</div>`;
+}
+function barraPct(v) { return `<div class="eia-barra">${v.map((n, k) => n ? `<span class="eia-seg" style="--w:${n}%;background:${CL[L[k]]}" title="${NL[L[k]]}: ${n} %">${n >= 8 ? n + ' %' : ''}</span>` : '').join('')}</div>`; }
 
 function vGrupo(el) {
   const g = EIA.grupos.find(x => x.id === gSel);
@@ -230,6 +298,12 @@ function diapositivas() {
     ${tarjeta(2, 'Una rúbrica por criterio', '<p>Cero: no responde o no corresponde. Uno: respuesta incipiente. Dos: en proceso. Tres: logrado.</p><p>No es un examen de opción múltiple: se valora cómo explica, argumenta y propone el alumno.</p>', CC.SPC)}
     ${tarjeta(3, 'Cuatro campos formativos', `<p>${C.map(c => `<b style="color:${CC[c]}">${NC[c]}</b>`).join(', ')}.</p><p>El resultado no es una calificación: es un diagnóstico para planear.</p>`, CC.HYC)}</div></div>` });
 
+  const cb = cobertura();
+  if (cb.ok) S.push({ pasos: 2, html: () => `<h2>¿Cuántos presentaron?</h2><div class="eia-dos">
+    <div class="eia-barras" data-p="1">${cb.filas.map(f => `<div class="eia-fila chica"><span class="eia-et">${nomG(f.id)}</span><span class="eia-it-b" style="height:26px"><span class="eia-crece" style="--w:${Math.min(100, pct(f.ev, f.mat))}%;background:#2E8B57"></span></span></div><p class="eia-nota" style="margin:-2px 0 6px 82px">${f.ev} de ${f.mat} alumnos · ${pct(f.ev, f.mat)} %</p>`).join('')}</div>
+    <div class="eia-ts">${tarjeta(1, `${cb.ev} de ${cb.mat} alumnos`, `<p>Presentó el <b>${pct(cb.ev, cb.mat)} %</b> de la matrícula actual del turno.</p><p class="eia-dato">Matrícula de la plataforma en noviembre; puede variar un poco por altas y bajas desde septiembre.</p>`, '#2E8B57')}
+    ${tarjeta(2, 'Los que faltan', `<p>Los grupos con menos cobertura fueron ${cb.filas.slice().sort((a, b) => pct(a.ev, a.mat) - pct(b.ev, b.mat)).slice(0, 2).map(f => `<b>${nomG(f.id)}</b> (${pct(f.ev, f.mat)} %)`).join(' y ')}.</p><p>Los alumnos sin resultado no tienen diagnóstico: hay que valorarlos en el aula.</p>`, '#9A8F80')}</div></div>` });
+
   S.push({ pasos: 4, html: () => `<h2>Los cuatro niveles de integración</h2><div class="eia-dos">
     <div class="eia-escalera">${L.map((l, k) => `<div class="eia-esc" data-p="${k + 1}" style="--h:${30 + k * 22}%;--c:${CL[l]}"><b>${l}</b><span>${NL[l]}</span><em>${pct(nivT[k], tot)} %</em></div>`).join('')}</div>
     <div class="eia-ts">${L.map((l, k) => tarjeta(k + 1, NL[l], `<p>${DL[l]}</p><p class="eia-dato">En nuestra escuela: <b>${nivT[k]}</b> de ${tot} resultados por campo (${pct(nivT[k], tot)} %).</p>`, CL[l])).join('')}</div></div>` });
@@ -246,6 +320,21 @@ function diapositivas() {
     <div class="eia-ts">${[1, 2, 3].map(g => { const G = D.grados[g], w = C.reduce((a, c) => apoyo(G.niv[c]) > apoyo(G.niv[a]) ? c : a), b = C.reduce((a, c) => G.niv[c][3] > G.niv[a][3] ? c : a);
       return tarjeta(g, `${ORD[g]} · ${G.n} alumnos`, `<p>Donde más apoyo necesita: <b>${NC[w]}</b> (${pct(apoyo(G.niv[w]), G.n)} %).</p><p>Donde mejor le fue: <b>${NC[b]}</b>, con ${pct(G.niv[b][3], G.n)} % en aprendizaje desarrollado.</p>`, CC[w]); }).join('')}
     ${tarjeta(4, 'Focos rojos', `<p>El punto más preocupante es <b>${ORD[peor.g]} en ${NC[peor.c]}</b>: ${peor.v} % requiere apoyo.</p><p>Tercero es el grado con más alumnos en «Requiere apoyo» en los cuatro campos: es el que menos tiempo tiene antes de egresar.</p>`, '#C8403A')}</div></div>` });
+
+  S.push({ pasos: 5, html: () => `<h2>¿Cómo estamos frente al estado y la zona?</h2><div class="eia-dos">
+    <div class="eia-comp">${leyenda()}${C.map((c, k) => `<div data-p="${k + 1}"><h4 style="color:${CC[c]}">${NC[c]}</h4>
+      <div class="eia-fila chica3"><span class="eia-et">Nosotros</span>${barraPct(escCampo(c))}</div><div class="eia-fila chica3"><span class="eia-et">Técnicas del estado</span>${barraPct(R.tecnicas[c])}</div><div class="eia-fila chica3"><span class="eia-et">Zona escolar</span>${barraPct(R.zona[c])}</div></div>`).join('')}</div>
+    <div class="eia-ts">${C.map((c, k) => { const e = ap(escCampo(c)), t = ap(R.tecnicas[c]), z = ap(R.zona[c]);
+      return tarjeta(k + 1, NC[c], `<p>Requiere apoyo: <b>nosotros ${e} %</b>, técnicas del estado ${t} %, zona ${z} %.</p><p>Aprendizaje desarrollado: <b>nosotros ${escCampo(c)[3]} %</b>, estado ${R.tecnicas[c][3]} %, zona ${R.zona[c][3]} %.</p>`, CC[c]); }).join('')}
+    ${tarjeta(5, 'En resumen', `<p>Frente a las técnicas del estado estamos <b>${(m => m <= 3 ? 'parejos' : `hasta ${m} puntos arriba`)(Math.max(...C.map(c => ap(escCampo(c)) - ap(R.tecnicas[c]))))}</b> en «Requiere apoyo».</p><p>Frente a nuestra zona tenemos <b>entre ${Math.min(...C.map(c => ap(escCampo(c)) - ap(R.zona[c])))} y ${Math.max(...C.map(c => ap(escCampo(c)) - ap(R.zona[c])))} puntos más</b> en «Requiere apoyo», y en Ética, naturaleza y sociedades tenemos muy pocos alumnos en desarrollado: ${escCampo('ENS')[3]} % contra ${R.tecnicas.ENS[3]} % del estado.</p>`, '#16213F')}</div></div>` });
+
+  S.push({ pasos: 4, html: () => `<h2>Cada grado frente al estado</h2><div class="eia-dos">
+    <div><p class="eia-nota">«Requiere apoyo» en nuestra escuela y, abajo, en las secundarias del estado</p><div class="eia-calor grande comp"><span></span>${C.map(c => `<b style="color:${CC[c]}">${c}</b>`).join('')}
+    ${[1, 2, 3].map(g => `<b data-p="${g}">${ORD[g]}</b>${C.map(c => { const e = ap(escGrado(g, c)), s = ap(R.grado[g][c]), d = e - s; return `<span data-p="${g}" class="${d >= 8 ? 'eia-mal' : d <= -3 ? 'eia-bien' : ''}">${e} %<small>estado ${s} %</small></span>`; }).join('')}`).join('')}</div></div>
+    <div class="eia-ts">${[1, 2, 3].map(g => { const D = C.map(c => ({ c, d: ap(escGrado(g, c)) - ap(R.grado[g][c]) }));
+      const peor = D.reduce((a, b) => b.d > a.d ? b : a), mejor = D.reduce((a, b) => b.d < a.d ? b : a);
+      return tarjeta(g, ORD[g], `<p>${peor.d >= 8 ? `Más abajo que el estado en <b>${NC[peor.c]}</b>: ${peor.d} puntos más en «Requiere apoyo».` : 'Dentro del promedio estatal o mejor en los cuatro campos.'}</p>${mejor.d < 0 ? `<p>Mejor que el estado en <b>${NC[mejor.c]}</b> (${-mejor.d} puntos menos).</p>` : ''}`, peor.d >= 8 ? '#C8403A' : '#2E8B57'); }).join('')}
+    ${tarjeta(4, 'La alerta está en tercero', `<p>Tercero está por encima del estado en los cuatro campos; en Saberes, ${ap(escGrado(3, 'SPC'))} % contra ${ap(R.grado[3].SPC)} %.</p><p>La SEDUC también marca a tercero de secundaria en Saberes como la principal señal de alerta del estado.</p>`, '#C8403A')}</div></div>` });
 
   [1, 2, 3].forEach(gr => {
     const gg = gs.filter(g => g.grado === gr), extra = gr === 1 ? 1 : 0;
@@ -283,11 +372,26 @@ function diapositivas() {
     <div class="eia-ts">${tarjeta(1, 'En todos los grados y en varios campos', `<p>Argumentar aparece en ${args.length} criterios distintos: en Lenguajes, en Saberes y pensamiento científico, y en Ética, naturaleza y sociedades.</p><p>Nuestros alumnos <b>saben responder qué</b>, pero les cuesta <b>explicar por qué</b>.</p>`, CC.LEN)}
     ${tarjeta(2, 'Una estrategia de toda la escuela', '<p>Usar en todas las asignaturas la misma fórmula: <b>«Yo pienso que… porque… por ejemplo…»</b>.</p><p>Y una misma rúbrica corta: tiene postura, tiene razón, tiene evidencia.</p>', '#2E8B57')}</div></div>` });
 
+  S.push({ pasos: 4, html: () => `<h2>Lo que pide la SEDUC para secundaria</h2><div class="eia-props dos">${C.map((c, k) => `<div class="eia-prop" data-p="${k + 1}" style="--c:${CC[c]}"><span>${c}</span><b>${NC[c]}</b><p>${esc(R.recom[c])}</p></div>`).join('')}</div>
+    <p class="eia-nota" style="margin-top:14px">Coincide con lo que encontramos: argumentar, leer y producir textos, resolver problemas con datos reales y proponer acciones en la comunidad.</p>` });
+
   const totPri = suma(gs.map(g => g.prioritarios)), maxP = Math.max(...gs.map(g => g.prioritarios));
   S.push({ pasos: 2, html: () => `<h2>Alumnos prioritarios</h2><div class="eia-dos">
     <div class="eia-pri-g">${gs.map(g => `<button type="button" class="eia-pcol" data-p="1" data-ver="${g.id}"><b>${g.prioritarios}</b><span class="eia-pbar"><span style="--h:${g.prioritarios / maxP * 100}%"></span></span><em>${nomG(g.id)}</em></button>`).join('')}</div>
     <div class="eia-ts">${tarjeta(1, `${totPri} alumnos`, '<p>Quedaron en «Requiere apoyo» o «Sin evidencias» en <b>tres o cuatro</b> de los cuatro campos formativos.</p><p>Toca una columna para ver los nombres del grupo.</p>', '#C8403A')}
     ${tarjeta(2, '¿Qué hacemos con ellos?', '<p>Cada tutor recibe su lista impresa.</p><p>Seguimiento cercano en el aula, revisión con sus maestros, y en su caso, plática con la familia.</p><p>Se cruzan con asistencia y reportes de conducta que ya están en la plataforma.</p>', '#16213F')}</div></div>` });
+
+  S.push({ pasos: 3, html: () => { const X = cruces(); if (!X) return `<h2>Lectura, conducta y EIA</h2><p class="eia-nota">🔒 Abre la lista de alumnos con la clave en la pestaña para ver este cruce.</p>`;
+    return `<h2>Lectura, conducta y EIA</h2><div class="eia-dos">
+    <div><p class="eia-nota" data-p="1">Promedio de lectura en Raíces y Estrellas según el nivel en Lenguajes</p><div class="eia-barras" data-p="1">${L.filter(l => X.porNivelLEN[l] != null).map(l => `<div class="eia-fila chica3"><span class="eia-et" style="--c:${CL[l]}">${NL[l]}</span><span class="eia-it-b" style="height:30px"><span class="eia-crece" style="--w:${X.porNivelLEN[l] * 10}%;background:${CL[l]}"></span></span></div><p class="eia-nota" style="margin:-4px 0 8px 200px"><b>${X.porNivelLEN[l]}</b> de diez</p>`).join('')}</div>
+      <div class="eia-rev grande" style="margin-top:10px"><div data-p="3"><b>${X.priConRep} de ${X.nPri}</b><span>prioritarios con reportes de conducta</span></div></div></div>
+    <div class="eia-ts">${tarjeta(1, X.corr != null && X.corr >= .3 ? 'Lectura y EIA van de la mano' : 'Lectura y EIA', `<p>${X.corr == null ? 'Todavía hay pocos alumnos con calificación de lectura para medir la relación.' : X.corr >= .3 ? `Entre más alto el nivel en Lenguajes, más alto el promedio de lectura: la relación es <b>${fuerza(X.corr)}</b>.` : `La relación entre los EIA y la lectura es <b>${fuerza(X.corr)}</b>: miden cosas distintas y se complementan.`}</p><p class="eia-dato">Se cruzaron ${X.conL} de ${X.n} alumnos con sus calificaciones de Raíces y Estrellas.</p>`, CC.LEN)}
+    ${tarjeta(2, 'Los prioritarios leen con más dificultad', `<p><b>${X.priLectRoja} de ${X.priConLect}</b> prioritarios están en rojo en lectura, contra ${X.restoLectRoja} de ${X.restoConLect} del resto.</p><p>La estrategia lectora es una vía directa para apoyarlos.</p>`, '#C8403A')}
+    ${tarjeta(3, 'Y la conducta', `<p>${pct(X.priConRep, X.nPri)} % de los prioritarios tiene reportes, contra ${pct(X.restoConRep, X.nResto)} % del resto.</p><p>El acompañamiento tiene que ser académico y de convivencia a la vez: tutor, familia y Subdirección.</p>`, CC.HYC)}</div></div>`; } });
+
+  const M = metas();
+  S.push({ pasos: Math.min(M.length, 6), html: () => `<h2>Metas para la siguiente aplicación</h2><p class="eia-nota">Llegar al promedio estatal donde hoy estamos ocho puntos o más arriba en «Requiere apoyo»</p>
+    <div class="eia-metas">${M.slice(0, 6).map((m, k) => `<div data-p="${k + 1}"><b style="color:${CC[m.c]}">${ORD[m.g]} · ${NC[m.c]}</b><span class="eia-meta-n"><em>${m.e} %</em> hoy <i>→</i> <em class="ok">${m.s} %</em> meta</span></div>`).join('')}</div>` });
 
   const sinR = suma(gs.map(g => g.sinResultado.length)), falt = suma(gs.map(g => g.faltoUno));
   S.push({ pasos: 2, html: () => `<h2>Antes de sacar conclusiones</h2><div class="eia-dos">

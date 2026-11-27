@@ -677,3 +677,23 @@ body.eia-presentando{overflow:hidden}
   .bit-firma div{border-top:1px solid #000;margin-bottom:3pt}
   .bit-firma b{display:block;font-size:10pt}.bit-firma span{font-size:8.5pt}
 }
+/* EIA: comparativos y cruces */
+.eia-fila.chica2{grid-template-columns:minmax(110px,190px) 1fr auto;margin:.3rem 0}
+.eia-fila.chica2.esc .eia-et{font-weight:800}
+.eia-fila.chica2 .eia-barra{height:22px}
+.eia-calor span small{display:block;font-size:.72em;opacity:.8;font-weight:400}
+.eia-calor .eia-mal{background:#F6D3CE;color:#7A1F1F;font-weight:700}
+.eia-calor .eia-bien{background:#D8EFDF;color:#1E5A32;font-weight:700}
+.eia-calor.grande.comp>span{padding:12px 6px}
+.eia-d .eia-fila.chica3{grid-template-columns:200px 1fr;margin:4px 0}
+.eia-d .eia-fila.chica3 .eia-barra{height:26px}
+.eia-d .eia-comp h4{margin:8px 0 2px;font:800 19px var(--serif)}
+.eia-props.dos{grid-template-columns:repeat(2,1fr)}
+.eia-props.dos .eia-prop{min-height:180px}
+.eia-props.dos .eia-prop span{width:auto;padding:0 12px;border-radius:999px;font-size:17px}
+.eia-metas{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:16px}
+.eia-metas>div{background:#fff;border:2px solid var(--linea);border-radius:12px;padding:16px 20px}
+.eia-metas b{display:block;font:800 23px var(--serif);margin-bottom:8px}
+.eia-meta-n{font-size:20px;color:var(--tinta2)}
+.eia-meta-n em{font:800 36px var(--serif);font-style:normal;color:#C8403A}.eia-meta-n em.ok{color:#2E8B57}
+.eia-meta-n i{font-style:normal;margin:0 8px;color:var(--oro)}
