@@ -1,0 +1,22 @@
+# Publica la plataforma también en Firebase Hosting (https://raices-y-estrellas-est17.web.app),
+# una dirección de Google que no bloquean las compañías de celular. Corre sola en cada cambio.
+name: Publicar en Firebase Hosting
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    env:
+      CLAVE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.CLAVE != ''
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: env.CLAVE != ''
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: raices-y-estrellas-est17
