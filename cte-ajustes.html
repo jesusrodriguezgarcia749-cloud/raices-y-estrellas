@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTE · Ajustes razonables · EST 17 Vespertino</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@400;700;800&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--noche:#16213F;--noche2:#22335A;--oro:#E3B85C;--oro2:#F3DDA8;--papel:#FFFDF7;--perg:#F4ECDD;--linea:#E3D7BF;--tinta:#2A241D;--tinta2:#6B6257;
+--acc:#2F6FD1;--dua:#2E8B57;--aju:#C98A2C;--no:#C8403A;--serif:'Alegreya',Georgia,serif;--sans:'Alegreya Sans',system-ui,sans-serif}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--perg);color:var(--tinta);font:20px/1.45 var(--sans)}
+header{position:sticky;top:0;z-index:5;background:var(--noche);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 20px;flex-wrap:wrap}
+header b{font:800 22px var(--serif);color:var(--oro2)}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+nav button{background:var(--noche2);color:#fff;border:0;border-radius:999px;padding:7px 14px;font:600 16px var(--sans);cursor:pointer}
+nav button[aria-pressed=true]{background:var(--oro);color:var(--noche)}
+main{max-width:1240px;margin:0 auto;padding:26px 28px 120px}
+h1{font:800 46px/1.1 var(--serif);color:var(--noche);margin:0 0 6px}
+h2{font:800 38px/1.15 var(--serif);color:var(--noche);margin:0 0 14px;border-bottom:4px solid var(--oro);padding-bottom:6px}
+h3{font:800 26px var(--serif);color:var(--noche);margin:18px 0 8px}
+.guia{background:#FFF6DE;border:2px dashed var(--oro);border-radius:14px;padding:12px 18px;font-size:17px;margin:0 0 18px}
+.guia b{color:#7A5A12}
+.tarjeta{background:var(--papel);border:2px solid var(--linea);border-radius:16px;padding:20px 24px;margin:0 0 18px}
+.btn{border:0;border-radius:999px;padding:12px 22px;font:700 19px var(--sans);cursor:pointer;background:var(--oro);color:var(--noche)}
+.btn.linea{background:transparent;border:2px solid var(--linea);color:var(--tinta)}
+.btn.chico{padding:7px 14px;font-size:16px}
+.fila{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pie{position:fixed;bottom:0;left:0;right:0;background:var(--noche);display:flex;justify-content:space-between;align-items:center;padding:10px 20px;z-index:5}
+.pie span{color:#C9D1EA;font-size:16px}
+/* Juego */
+.caso{font:700 34px/1.3 var(--serif);color:var(--noche);min-height:3.2em;margin:6px 0 18px}
+.ops{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.op{border:3px solid var(--linea);background:#fff;border-radius:16px;padding:18px 10px;font:800 22px var(--serif);cursor:pointer;color:var(--noche)}
+.op[data-k=acc]{border-color:var(--acc)}.op[data-k=dua]{border-color:var(--dua)}.op[data-k=aju]{border-color:var(--aju)}.op[data-k=no]{border-color:var(--no)}
+.op.bien{background:#DFF1E5}.op.mal{opacity:.35}
+.expl{margin-top:16px;border-left:8px solid var(--dua);background:#fff;border-radius:10px;padding:14px 18px;font-size:21px}
+.marcador{font:800 30px var(--serif);color:var(--noche)}
+.puntos{display:flex;gap:6px;margin:8px 0 14px;flex-wrap:wrap}.puntos i{width:22px;height:22px;border-radius:50%;background:var(--linea);display:inline-block}.puntos i.ok{background:var(--dua)}.puntos i.x{background:var(--no)}.puntos i.act{outline:3px solid var(--oro)}
+/* Datos */
+.dato-grande{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.dato-grande div{background:#fff;border:2px solid var(--linea);border-radius:14px;padding:16px}
+.dato-grande b{display:block;font:800 52px var(--serif);color:var(--no)}
+.tres{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.tres>div{background:#fff;border-radius:14px;padding:16px 18px;border-top:10px solid var(--c)}
+.tres h4{margin:0 0 6px;font:800 24px var(--serif);color:var(--c)}
+/* Jornada */
+.perfil{display:grid;grid-template-columns:1.1fr 1fr;gap:18px}
+.niv{display:inline-block;padding:2px 10px;border-radius:6px;color:#fff;font-weight:700;background:var(--no);margin:2px}
+.tabla{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
+.tabla th{background:var(--noche);color:#fff;font:700 17px var(--sans);padding:10px;text-align:left}
+.tabla td{border-top:1px solid var(--linea);padding:8px;vertical-align:top;font-size:17px}
+.tabla td:first-child{font-weight:700;width:16%;color:var(--noche)}
+.tabla textarea,.campo textarea,.campo input,.tabla input,.tabla select{width:100%;font:17px var(--sans);border:1.5px solid var(--linea);border-radius:8px;padding:6px 8px;background:var(--papel);resize:vertical}
+.tabla tr.act td{background:#FFF6DE}
+.campo{margin:10px 0}.campo label{display:block;font-weight:700;color:var(--noche);margin-bottom:4px}
+.ej{font-size:15px;color:var(--tinta2);margin:3px 0 0}
+/* Priorizar */
+.crit th{font-size:15px}
+.crit td input{width:64px;text-align:center;font-size:20px}
+.rank b{display:inline-flex;width:34px;height:34px;border-radius:50%;background:var(--oro);color:var(--noche);align-items:center;justify-content:center;margin-right:8px}
+/* Seis pasos */
+.pasos{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px}
+.pasos div{background:var(--noche);color:#fff;border-radius:10px;padding:10px;text-align:center;font-weight:700;font-size:16px;opacity:.35;cursor:pointer}
+.pasos div.on{opacity:1;background:var(--oro);color:var(--noche)}
+.paso-ayuda{font:700 24px var(--serif);color:var(--noche)}
+@media (max-width:800px){.ops,.dato-grande,.tres,.perfil,.pasos{grid-template-columns:1fr 1fr}html,body{font-size:17px}}
+/* Impresión: producto del CTE en carta */
+#impresion{display:none}
+@media print{
+  @page{size:letter;margin:16mm 14mm}
+  body{background:#fff}
+  body>*:not(#impresion){display:none!important}
+  #impresion{display:block;font:10.5pt Arial,sans-serif;color:#000}
+  .p-cab{display:grid;grid-template-columns:52pt 1fr;gap:10pt;align-items:center;border-bottom:1.5px solid #000;padding-bottom:6pt;margin-bottom:8pt}
+  .p-cab img{width:52pt}.p-cab b{font-size:11.5pt}.p-cab span{display:block;font-size:8.5pt}
+  #impresion h1{font:700 15pt Georgia,serif;text-align:center;margin:4pt 0 8pt}
+  #impresion h2{font:700 12pt Georgia,serif;margin:12pt 0 4pt;border:0;padding:0;color:#000;break-after:avoid}
+  #impresion table{width:100%;border-collapse:collapse;margin-bottom:6pt}
+  #impresion th,#impresion td{border:1px solid #000;padding:3pt 4pt;text-align:left;vertical-align:top;font-size:9.5pt}
+  #impresion th{background:#E8E8E8}
+  #impresion tr{break-inside:avoid}
+  .p-firmas{display:grid;grid-template-columns:1fr 1fr;gap:30pt;margin-top:36pt;text-align:center;font-size:9pt}
+  .p-firmas div{border-top:1px solid #000;padding-top:3pt}
+}
+</style>
+</head>
+<body>
+<header><b>Ajustes razonables · CTE</b><nav id="nav"></nav></header>
+<main id="vista"></main>
+<div class="pie"><button type="button" class="btn linea chico" id="ant" style="color:#fff;border-color:#3A4A70">◀ Anterior</button><span id="donde"></span><button type="button" class="btn chico" id="sig">Siguiente ▶</button></div>
+<div id="impresion"></div>
+<script src="cte-ajustes.js?v=2026112701"></script>
+</body>
+</html>
