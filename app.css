@@ -668,3 +668,12 @@ body.eia-presentando{overflow:hidden}
 .rp-op[data-at][aria-pressed="true"]::after{content:"✓ Elegido";position:absolute;top:.45rem;left:.5rem;background:var(--verde);color:#fff;font-size:.75rem;font-weight:700;border-radius:999px;padding:.1rem .5rem}
 .rp-op[data-at][aria-pressed="false"]{opacity:.75}
 .rp-op[data-at]{padding-top:2rem;vertical-align:top}
+/* Bitácora de reportes que descarga el maestro desde su link */
+@media print{
+  .rg td small{display:block;font-size:7pt;text-transform:uppercase;color:#444;margin-bottom:1pt}
+  .bit-rep{break-inside:avoid;margin-bottom:7pt}
+  .bit-rep th.izq{text-align:left;font-size:9.5pt}
+  .bit-firma{margin:34pt auto 0;width:60%;text-align:center;break-inside:avoid}
+  .bit-firma div{border-top:1px solid #000;margin-bottom:3pt}
+  .bit-firma b{display:block;font-size:10pt}.bit-firma span{font-size:8.5pt}
+}

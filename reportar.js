@@ -141,6 +141,49 @@ function formulario() {
   });
 }
 
+/* ---------- Descargar / imprimir reportes (para la bitácora del maestro) ----------
+   Misma portada que el Reporte general: escudo, nombre de la escuela, C.C.T. y ciclo; al final, el nombre de quien descarga.
+   En el celular se abre «Imprimir»: ahí se elige «Guardar como PDF» para descargarlo. */
+const CICLO_TXT = '2026-2027';
+function imprimir(html) {
+  const zona = $('#impresion'); zona.innerHTML = html; document.body.classList.add('imprimiendo');
+  const fin = () => { document.body.classList.remove('imprimiendo'); zona.innerHTML = ''; removeEventListener('afterprint', fin); };
+  addEventListener('afterprint', fin); setTimeout(() => print(), 400);
+}
+const fAn = iso => iso ? `${fLarga(iso)} de ${String(iso).slice(0, 4)}` : '';
+function accionesEscuela(i, conSeg = true) {
+  const A = [];
+  if (i.avisoTutor) A.push(`${fAn(fLoc(i.avisoTutor))}: se turnó y se avisó al tutor del grupo.`);
+  if (i.avisoFam) A.push(`${fAn(fLoc(i.avisoFam))}: la escuela informó a la familia.`);
+  if (i.cita) { A.push(`Cita con la familia: ${fAn(i.cita.fecha)}, ${hora12(i.cita.hora)}${i.cita.motivo ? ` (${i.cita.motivo})` : ''}${i.cita.enviado ? '; citatorio enviado.' : '.'}`);
+    (i.cita.hist || []).forEach(h => A.push(`${fAn(h.fecha)}: ${RES[h.resultado] || ''}${h.acuerdos ? `. Acuerdos: ${h.acuerdos}` : ''}.`)); }
+  if (conSeg) (i.anots || (i.confidencial ? [] : (i.seg || []).filter(a => a.docentes !== false && a.que))).forEach(a => A.push(`${a.fecha ? fAn(a.fecha) + ': ' : ''}${a.que}${a.quien ? ` (${a.quien})` : ''}.`));
+  return A;
+}
+const ATIENDE = { maestro: 'Lo atiende el maestro', tutor: 'Turnado al tutor del grupo', subdireccion: 'Con la Subdirección' };
+function hojaReportes(L, titulo, alumno = '') {
+  const per = L.length ? [...L.map(i => i.fecha)].sort() : [];
+  const filas = L.map((i, n) => `<div class="bit-rep">
+    <table><tbody>
+      <tr><th style="width:4%">${n + 1}</th><th class="izq" colspan="3">${esc(i.alumno)} · ${i.grado}.° «${esc(i.grupo)}»</th></tr>
+      <tr><td class="izq" colspan="2"><small>Fecha y hora</small>${fAn(i.fecha)}${i.hora ? `, ${hora12(i.hora)}` : ''}</td><td class="izq"><small>Asignatura o lugar</small>${esc(i.asignatura || '—')}</td><td class="izq"><small>Gravedad · estado</small>${GRAV[i.gravedad] || '—'} · ${EST[i.estado] || 'Pendiente'}</td></tr>
+      <tr><td class="izq" colspan="4"><small>Tipo de falta</small>${esc((i.tipos || []).join(', ') || '—')}</td></tr>
+      <tr><td class="izq" colspan="4"><small>Lo que pasó</small>${esc(i.hechos || '')}</td></tr>
+      <tr><td class="izq" colspan="4"><small>Quién lo atiende y lo que hizo la escuela</small>${esc(ATIENDE[i.atiende] || '—')}${accionesEscuela(i).map(a => `<br>• ${esc(a)}`).join('')}</td></tr>
+    </tbody></table></div>`).join('');
+  return `<section class="hoja-imp rg">
+    <div class="rg-cab"><img src="logo-escuela.jpg" alt=""><div><b>Escuela Secundaria Técnica N.° 17 · Turno Vespertino</b><span>C.C.T. 04DST0017E · San Francisco de Campeche, Campeche · Ciclo escolar ${CICLO_TXT}</span></div></div>
+    <h1>${esc(titulo)}</h1>
+    <div class="rg-datos">
+      <div><small>${B.cargo && B.cargo !== 'Docente' ? esc(B.cargo) : 'Docente'}</small>${esc(B.maestro)}</div><div><small>${alumno ? 'Alumno(a)' : 'Alumnos'}</small>${alumno ? esc(alumno) : `${new Set(L.map(i => i.curp || i.alumno)).size} alumno${new Set(L.map(i => i.curp || i.alumno)).size === 1 ? '' : 's'}`}</div><div><small>Fecha de descarga</small>${fAn(hoyISO())}</div>
+      <div><small>Asignaturas</small>${esc((B.materias || []).join(', ') || '—')}</div><div><small>Periodo</small>${per.length ? `${fAn(per[0])} al ${fAn(per[per.length - 1])}` : '—'}</div><div><small>Número de reportes</small>${L.length}</div>
+    </div>
+    ${filas || '<p>Sin reportes.</p>'}
+    <div class="bit-firma"><div></div><b>${esc(B.maestro)}</b><span>${B.cargo && B.cargo !== 'Docente' ? esc(B.cargo) : 'Docente'}${(B.materias || []).length ? ' · ' + esc(B.materias.join(', ')) : ''}</span></div>
+  </section>`;
+}
+const AYUDA_DESC = '<p class="ayuda" style="margin:.3rem 0 0">Al tocar «Descargar» se abre la ventana de imprimir: elige <b>Guardar como PDF</b> para descargarlo, o imprímelo directo para tu bitácora.</p>';
+
 async function misReportes() {
   vista.innerHTML = `${cab()}<div class="tarjeta"><p class="cargando">Cargando tus reportes…</p></div>`; ligarCab();
   let L = [];
@@ -152,7 +195,8 @@ async function misReportes() {
     ${c.enviado ? `<small>📨 La escuela envió el citatorio a la familia por WhatsApp el ${fLarga(fLoc(c.enviado))}.</small>` : '<small>⏳ La escuela todavía no envía el citatorio.</small>'}
     ${(c.hist || []).map(h => `<br><small>• ${fLarga(h.fecha)}: ${RES[h.resultado] || ''}${h.acuerdos ? ` · ${esc(h.acuerdos)}` : ''}</small>`).join('')}</p>`;
   vista.innerHTML = `${cab()}<div class="tarjeta"><h2>Mis reportes (${L.length})</h2>
-    ${L.length ? L.map(i => `<div class="rep-fila" style="display:block">
+    ${L.length ? `<div class="fila-btn" style="margin:.2rem 0 .3rem"><input id="mr-q" type="search" placeholder="Buscar alumno" style="flex:1;min-width:180px;min-height:44px;padding:.4rem .7rem;border:1.5px solid #CDBB98;border-radius:10px"><button type="button" class="btn oro" id="mr-desc">⬇️ Descargar (<span id="mr-n">${L.length}</span>)</button></div>${AYUDA_DESC}` : ''}
+    ${L.length ? L.map(i => `<div class="rep-fila" style="display:block" data-mr="${i.id}" data-nom="${esc((i.alumno || '').toLowerCase())}">
       <div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap"><span><b>${esc(i.alumno)}</b> <small>· ${i.grado}.° ${esc(i.grupo)} · ${fLarga(i.fecha)}</small></span><span class="envio ${i.estado === 'atendido' ? 'ok' : 'pend'}">${EST[i.estado] || 'Pendiente'}</span></div>
       <p style="margin:.3rem 0">${esc(i.hechos)}</p>
       ${i.capturo ? '<small style="display:block;color:#6A5C4C">Lo registró la Subdirección con lo que usted le informó.</small>' : ''}
@@ -162,9 +206,16 @@ async function misReportes() {
       ${citaTxt(i.cita)}
       ${i.cita && !i.cita.resultado ? `<div class="fila-btn" style="margin-top:.4rem"><button type="button" class="btn oro chico" data-res="${i.id}">Anotar cómo fue la cita</button></div>` : ''}
       ${i.cita && i.cita.resultado === 'noasistio' ? `<div class="fila-btn" style="margin-top:.4rem"><button type="button" class="btn linea chico" data-res="${i.id}">Nueva cita</button></div>` : ''}
+      <div class="fila-btn" style="margin-top:.4rem"><button type="button" class="btn linea chico" data-desc1="${i.id}">⬇️ Descargar este reporte</button></div>
     </div>`).join('') : '<p class="ayuda">Todavía no has enviado reportes con este link.</p>'}</div>`;
   ligarCab();
   vista.querySelectorAll('[data-res]').forEach(b => b.addEventListener('click', () => resultado(L.find(i => i.id === b.dataset.res))));
+  const sinAc = t => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const visiblesL = () => { const q = sinAc($('#mr-q')?.value.trim() || ''); return L.filter(i => !q || sinAc(i.alumno || '').includes(q)); };
+  $('#mr-q')?.addEventListener('input', () => { const V = new Set(visiblesL().map(i => i.id)); vista.querySelectorAll('[data-mr]').forEach(d => { d.hidden = !V.has(d.dataset.mr); }); $('#mr-n').textContent = V.size; });
+  $('#mr-desc')?.addEventListener('click', () => { const V = visiblesL().sort((a, b) => (a.fecha || '').localeCompare(b.fecha || '')); if (!V.length) { aviso('No hay reportes con esa búsqueda.', true); return; }
+    const al = new Set(V.map(i => i.alumno)); imprimir(hojaReportes(V, 'Bitácora de reportes de incidencias', al.size === 1 ? `${V[0].alumno} · ${V[0].grado}.° «${V[0].grupo}»` : '')); });
+  vista.querySelectorAll('[data-desc1]').forEach(b => b.addEventListener('click', () => { const i = L.find(z => z.id === b.dataset.desc1); imprimir(hojaReportes([i], 'Reporte de incidencia', `${i.alumno} · ${i.grado}.° «${i.grupo}»`)); }));
 }
 
 function resultado(i) {
@@ -217,7 +268,8 @@ async function miGrupo(recargar = true) {
   vista.innerHTML = `${cab()}
   <div class="tarjeta"><h2>Mi grupo: ${g[0]}.° ${esc(g.slice(1))}</h2>
     <p class="ayuda">Como tutor ves todos los reportes de tu grupo, de cualquier maestro, con el detalle completo, y lo que ya hizo la escuela. Registra aquí lo que haces con cada alumno: le llega a la Subdirección.</p>
-    <p><b>${GR.L.length}</b> reportes · <b>${pend}</b> pendientes · <b>${Object.keys(porAl).length}</b> alumno${Object.keys(porAl).length === 1 ? '' : 's'}${filtroConc ? ' (filtrado)' : ''}</p></div>
+    <p><b>${GR.L.length}</b> reportes · <b>${pend}</b> pendientes · <b>${Object.keys(porAl).length}</b> alumno${Object.keys(porAl).length === 1 ? '' : 's'}${filtroConc ? ' (filtrado)' : ''}</p>
+    ${L.length ? `<div class="fila-btn"><button type="button" class="btn oro" id="gr-desc">⬇️ Descargar los reportes del grupo (${L.length})</button></div>${AYUDA_DESC}` : ''}</div>
   ${GR.C.length ? `<div class="tarjeta"><h3 style="margin-top:0">Concentrados que te envió la Subdirección</h3>${GR.C.map((c, k) => `<div class="rep-fila" style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;align-items:center">
       <span><b>Del ${fLarga(c.d)} al ${fLarga(c.h)}</b> <small>· ${c.n} reporte${c.n === 1 ? '' : 's'} · ${fh(c.creado)}</small><br><small>${c.enterado ? `✓ Marcaste «Enterado» el ${fh(c.enterado)}` : '⏳ Falta que marques «Enterado»'}</small></span>
       <span class="fila-btn" style="margin:0"><button type="button" class="btn linea chico" data-cver="${k}">${filtroConc === c ? 'Ver todos' : 'Ver sus reportes'}</button>${c.enterado ? '' : `<button type="button" class="btn oro chico" data-cent="${k}">Enterado</button>`}</span></div>`).join('')}</div>` : ''}
@@ -232,9 +284,12 @@ async function miGrupo(recargar = true) {
         ${i.cita ? `<br><small>📅 Cita con la familia: ${fLarga(i.cita.fecha)}, ${hora12(i.cita.hora)}${i.cita.enviado ? ' · citatorio enviado' : ' · falta citatorio'}${i.cita.resultado ? ` · ${RES[i.cita.resultado] || ''}${i.cita.acuerdos ? `: ${esc(i.cita.acuerdos)}` : ''}` : ''}</small>` : ''}
         ${(i.anots || []).length ? `<div class="tg-seg"><b>Seguimiento:</b><br>${i.anots.map(a => '• ' + esc(anot(a))).join('<br>')}</div>` : ''}
         ${misPend(i.id).map(x => `<div class="tg-seg tg-mio">• ${fLarga(x.fecha)}: ${esc([...(x.acciones || []), x.nota].filter(Boolean).join('. '))} <small>(tú · enviado a la Subdirección)</small></div>`).join('')}
-        <div class="fila-btn" style="margin-top:.4rem"><button type="button" class="btn oro chico" data-hice="${esc(i.id)}">Registrar lo que hice</button></div>
+        <div class="fila-btn" style="margin-top:.4rem"><button type="button" class="btn oro chico" data-hice="${esc(i.id)}">Registrar lo que hice</button><button type="button" class="btn linea chico" data-gdesc="${esc(i.curp || i.alumno)}">⬇️ Descargar sus reportes</button></div>
         <div class="tg-form" id="tg-${esc(i.id)}" hidden></div></div>`).join('')}</details>`).join('') : '<p class="ayuda">Tu grupo no tiene reportes por ahora.</p>'}</div>`;
   ligarCab();
+  const ord = A => [...A].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  $('#gr-desc')?.addEventListener('click', () => imprimir(hojaReportes(ord(L), `Reportes de incidencias del grupo ${g[0]}.° «${g.slice(1)}»`)));
+  vista.querySelectorAll('[data-gdesc]').forEach(b => b.addEventListener('click', () => { const I = ord(porAl[b.dataset.gdesc] || []); if (I.length) imprimir(hojaReportes(I, 'Reportes de incidencias del alumno', `${I[0].alumno} · ${I[0].grado}.° «${I[0].grupo}»`)); }));
   vista.querySelectorAll('[data-cver]').forEach(b => b.addEventListener('click', () => { const c = GR.C[+b.dataset.cver]; filtroConc = filtroConc === c ? null : c; miGrupo(false); }));
   vista.querySelectorAll('[data-cent]').forEach(b => b.addEventListener('click', async () => { const c = GR.C[+b.dataset.cent]; b.disabled = true;
     try { const t = new Date().toISOString(); await updateDoc(c.ref, { enterado: t }); c.enterado = t; aviso('Listo: quedó como enterado.'); miGrupo(false); }
