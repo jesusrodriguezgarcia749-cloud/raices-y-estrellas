@@ -71,7 +71,7 @@ dia('Aptitudes sobresalientes: también llevan ajustes', [
   '<div class="caja">Considerar sus fortalezas <b>y también</b> sus dificultades. En nuestros EIA, <b>nueve alumnos</b> tienen aprendizaje desarrollado en tres o cuatro campos: son candidatos, no un diagnóstico.</div>']);
 dia('Barreras para el Aprendizaje y la Participación', [
   '<div class="cuatro"><div><b>Actitudinales</b>Creencias y formas de trato hacia la diversidad.</div><div><b>Estructurales</b>La exclusión que se volvió costumbre.</div><div><b>Didácticas</b>Métodos de enseñanza y evaluación que no responden a las necesidades reales.</div><div><b>Normativas</b>Reglas, disposiciones y políticas que impiden.</div></div>',
-  '<div class="caja">Para quitarlas hay que reconocerlas en tres dimensiones: <b>culturas</b> (valores y creencias), <b>políticas</b> (cómo nos organizamos) y <b>prácticas</b> (lo que hacemos en el aula).</div>']);
+  '<div class="caja">Para quitarlas hay que reconocerlas en tres dimensiones: <b>culturas</b> (valores y creencias), <b>políticas</b> (cómo nos organizamos) y <b>prácticas</b> (lo que hacemos en el aula).</div>'], 'Para profundizar: Manual de Apoyo a la Educación Inclusiva, USAER, Secretaría de Educación del Estado de Campeche, 2017.');
 dia('¿Qué barreras se asoman en nuestros datos?', [
   '<p class="grande">La SEP pregunta: <b>«¿Las actividades permiten demostrar el aprendizaje sin que una barrera influya en el resultado?»</b></p>',
   '<div class="cifras"><div><b>100 %</b>de tercero sacó cero o uno al resolver el problema de área y perímetro</div><div><b>83 %</b>de tercero no logró usar la infografía</div><div><b>30</b>números de lista sin resultado: no participaron</div><div><b>32</b>alumnos requieren apoyo en tres o cuatro campos</div></div>',
@@ -98,7 +98,7 @@ dia('Ajustes razonables, Programa Analítico y mejora continua', [
   '<div class="caja">Si una barrera se repite, entra al <b>Programa de mejora continua</b> con objetivos, metas y acciones: deja de depender de la buena voluntad de un docente.</div>',
   '<div class="ruta"><span>Lectura de la realidad</span><span>Diagnóstico</span><span>Codiseño</span><span>Programa Analítico</span><span>Planeación</span><span>Evaluación formativa</span><span>Seguimiento</span><span>Mejora continua</span></div>']);
 act({ id: 'compromiso', tipo: 'compromiso', titulo: 'Mi compromiso', instr: 'Escribe un cambio o un ajuste concreto que aplicarás en tu clase la próxima semana.' });
-dia('Gracias', ['<p class="grande">El producto de la sesión, con la participación y los compromisos, se imprime desde esta pantalla.</p>'], 'cierre');
+dia('Gracias', ['<p class="grande">El producto de la sesión, con la participación y los compromisos, se imprime desde esta pantalla.</p>', '<p class="grande">Llévate la <a href="cte-hoja.html" target="_blank"><b>hoja de ajustes razonables</b></a>: los conceptos, cuatro preguntas para revisar tu aula y tu plan.</p>'], 'cierre');
 
 return { PASOS: P, OPS, MOMENTOS, CRIT, SEIS, CASO, JUEGO };
 })();
