@@ -2,7 +2,7 @@
    La primera vez que se abre con cualquier internet, la página queda guardada. Si después la red del teléfono
    no llega a GitHub (pasa con algunas compañías), se abre desde lo guardado y los datos siguen llegando por Firebase.
    Siempre intenta primero la versión nueva; si en 4 segundos no responde, usa la guardada. */
-const CACHE = 'rye-v3';
+const CACHE = 'rye-v4';
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const BASE = ['./reportar.html', './reportar.js', './reporte.html', './reporte.js', './app.html', './app.js', './app.css',
   './datos-lecturas.js', './datos-reporte.js', './logo-escuela.jpg', './cte.html', './cte.js', './cte-datos.js', './cte-hoja.html',

@@ -20,7 +20,7 @@ function entrar() {
   yo = localStorage.getItem(`cte_p_${sid}`) || '';
   onSnapshot(doc(db, 'cte', sid), s => {
     if (!s.exists()) { vista.innerHTML = '<div class="tarjeta"><p class="err">Ese código no existe. Revísalo en la pantalla.</p></div>'; setTimeout(pedirCodigo, 2500); return; }
-    S = s.data();
+    S = s.data(); reloj();
     if (!S.activo) { vista.innerHTML = '<div class="tarjeta espera"><b>La sesión terminó</b>Gracias por participar.</div>'; return; }
     if (!yo) return elegir();
     pintar();
@@ -45,7 +45,7 @@ async function pintar() {
   const k2 = `${S.k}|${P.tipo === 'juego' ? `${S.i}|${S.rev}` : ''}|${P.tipo === 'priorizar' ? (S.barreras || []).join('¦') : ''}`;
   if (k2 === clave) return; clave = k2;
   if (P.t === 'dia') { vista.innerHTML = `<div class="tarjeta espera">👀<b>Atento a la pantalla</b>${esc(P.titulo)}</div>`; return; }
-  const id = P.tipo === 'juego' ? `${slug(yo)}__juego__${S.i || 0}` : `${slug(yo)}__${P.id}`;
+  const id = P.tipo === 'juego' ? `${slug(yo)}__${P.id}__${S.i || 0}` : `${slug(yo)}__${P.id}`;
   let previo = null; try { const s = await getDoc(doc(db, 'cte', sid, 'r', id)); if (s.exists()) previo = s.data().v; } catch { /* nuevo */ }
   if (clave !== k2) return;
   F[P.tipo](P, id, previo);
@@ -57,7 +57,7 @@ const guardar = async (P, id, v, btn) => {
   catch (e) { console.error(e); if (msg) msg.innerHTML = '<p class="err">No se envió. Revisa tu internet y vuelve a tocar el botón.</p>'; }
   if (btn) { btn.disabled = false; btn.textContent = 'Enviar'; }
 };
-const prev = v => { try { return JSON.parse(v); } catch { return {}; } };
+const prev = v => { try { return JSON.parse(v) || {}; } catch { return {}; } };
 const F = {};
 F.abiertas = (P, id, v) => { const o = prev(v);
   vista.innerHTML = `<div class="tarjeta"><h2>${esc(P.titulo)}</h2><p class="instr">${esc(P.instr)}</p>${P.preguntas.map(([q, ej], n) => `<label>${n + 1}. ${esc(q)}</label><textarea data-q="${n}">${esc(o[`q${n}`] || '')}</textarea><p class="ej">${esc(ej)}</p>`).join('')}
@@ -69,7 +69,7 @@ F.juego = (P, id, v) => {
   if (i >= P.casos.length) { vista.innerHTML = '<div class="tarjeta espera">🏁<b>Terminó el juego</b>Mira los resultados en la pantalla.</div>'; return; }
   const c = P.casos[i], mio = v || '';
   vista.innerHTML = `<div class="tarjeta"><p class="instr">Situación ${i + 1} de ${P.casos.length}</p><p class="caso">${esc(c[0])}</p>
-    ${OPS.map(([k, t]) => `<button class="op ${S.rev ? (k === c[1] ? 'bien' : k === mio ? 'mal' : '') : k === mio ? 'sel' : ''}" data-k="${k}" ${S.rev ? 'disabled' : ''}>${t}</button>`).join('')}
+    ${(P.ops || OPS).map(([k, t]) => `<button class="op ${S.rev ? (k === c[1] ? 'bien' : k === mio ? 'mal' : '') : k === mio ? 'sel' : ''}" data-k="${k}" ${S.rev ? 'disabled' : ''}>${t}</button>`).join('')}
     <div id="msg">${S.rev ? `<p class="${mio === c[1] ? 'ok' : 'err'}">${mio === c[1] ? '✓ ¡Correcto!' : mio ? 'No era esa.' : 'No contestaste.'}</p><p class="instr">${esc(c[2])}</p>` : mio ? '<p class="ok">✓ Respuesta enviada. Espera a que se revele.</p>' : ''}</div></div>`;
   if (!S.rev) vista.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { vista.querySelectorAll('[data-k]').forEach(x => x.classList.toggle('sel', x === b)); guardar(P, id, b.dataset.k); });
 };
@@ -99,3 +99,11 @@ F.compromiso = (P, id, v) => { const o = prev(v);
     <button class="btn" id="env">Enviar</button><div id="msg">${v ? '<p class="ok">✓ Ya habías enviado. Puedes corregir.</p>' : ''}</div></div>`;
   $('#env').onclick = e => { const r = {}; vista.querySelectorAll('[data-s]').forEach(t => { r[t.dataset.s] = t.value.trim().slice(0, 800); }); if (!r.txt) return; guardar(P, id, r, e.target); };
 };
+/* Tiempo restante de la actividad, el mismo que se ve en el proyector. */
+function reloj() {
+  const el = $('#reloj'); if (!el || !S) return;
+  const P = PASOS[S.k || 0], q = S.tfin && P.t === 'act' ? Math.round((S.tfin - Date.now()) / 1000) : null;
+  el.textContent = q == null ? '' : q > 0 ? `⏱ ${Math.floor(q / 60)}:${String(q % 60).padStart(2, '0')}` : '⏱ Tiempo';
+  el.style.color = q != null && q <= 60 ? '#FF9B8F' : '#F3DDA8';
+}
+setInterval(reloj, 1000);

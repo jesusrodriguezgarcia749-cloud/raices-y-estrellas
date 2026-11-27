@@ -8,13 +8,14 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, getDocs, collection, onSn
 const app = initializeApp({ apiKey: 'AIzaSyB0IzYArTNquMl5-zphxdW9G4wcYmPgekA', authDomain: 'raices-y-estrellas-est17.firebaseapp.com', projectId: 'raices-y-estrellas-est17',
   storageBucket: 'raices-y-estrellas-est17.firebasestorage.app', messagingSenderId: '666765040335', appId: '1:666765040335:web:a5bae72abc2dbd1b7035ba' });
 const auth = getAuth(app), db = getFirestore(app);
-const { PASOS, OPS, MOMENTOS, CRIT, SEIS, CASO } = window.CTE;
+const { PASOS, OPS, MOMENTOS, CRIT, SEIS, CASO, GALERIA } = window.CTE;
+const opsDe = P => P.ops || OPS;
 const $ = s => document.querySelector(s);
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const vista = $('#vista');
 const URL_CEL = c => new URL(`cte.html?s=${c}`, location.href).href;
 
-let sid = localStorage.getItem('cte_sid') || '', S = null, R = [], guia = false, verQ = 0, desuscribir = [];
+let sid = localStorage.getItem('cte_sid') || '', S = null, R = [], guia = false, verQ = 0, desuscribir = [], visto = '', chk = {};
 const parse = v => { try { return JSON.parse(v); } catch { return v; } };
 
 /* ---------- Entrada ---------- */
@@ -61,12 +62,37 @@ function pintar() {
   const k = S.k || 0, P = PASOS[k];
   $('#cod').textContent = `Código: ${sid}`;
   $('#donde').textContent = `${k + 1} de ${PASOS.length}`;
-  $('#nav').innerHTML = `<button type="button" data-qr>QR</button><button type="button" data-prod>Producto</button><button type="button" data-cerrar>Cerrar sesión</button>`;
+  $('#nav').innerHTML = `${P.t === 'act' ? `<span class="reloj" id="reloj"></span><button type="button" data-crono>${S.tfin ? 'Detener tiempo' : `⏱ ${P.min || 5} min`}</button>` : ''}<button type="button" data-qr>QR</button><button type="button" data-prod>Producto</button><button type="button" data-cerrar>Cerrar sesión</button>`;
   const lado = P.t === 'act' || P.nota === 'portada';
   vista.innerHTML = `<div class="wrap${lado ? '' : ' sin-lado'}"><div class="esc" id="esc">${guia ? `<div class="guia-txt">${esc(guiaTxt(P))}</div>` : ''}${P.t === 'dia' ? diaHTML(P, S.r || 0) : '<div id="act"></div>'}</div>${lado ? '<aside class="lado" id="lado"></aside>' : ''}</div>`;
   if (P.nota === 'portada') ponerQR('#qr-port');
-  pintarVivo();
+  encender(P, S.r || 0);
+  pintarVivo(); tic();
 }
+/* Enciende las piezas del diagrama hasta la tarjeta actual; lo recién encendido entra con animación y cuenta sus números. */
+function encender(P, r) {
+  if (P.t !== 'dia') return;
+  const clave = `${S.k}|${r}`, nuevo = clave !== visto; visto = clave;
+  const pon = (el, n) => { if (n < r) el.classList.add('on'); if (n === r - 1) el.classList.add('now'); };
+  vista.querySelectorAll('.fig [data-p]').forEach(el => { const n = +el.dataset.p - 1; if (n === r - 1 && nuevo) requestAnimationFrame(() => requestAnimationFrame(() => { pon(el, n); contar(el); })); else pon(el, n); });
+  vista.querySelectorAll('.tjs [data-r]').forEach((el, n) => { if (n === r - 1 && nuevo) requestAnimationFrame(() => requestAnimationFrame(() => pon(el, n))); else pon(el, n); });
+}
+function contar(el) {
+  [...el.querySelectorAll('[data-cnt]'), ...(el.matches('[data-cnt]') ? [el] : [])].forEach(b => {
+    const fin = +b.dataset.cnt, suf = b.dataset.suf || '', t0 = performance.now();
+    const paso = t => { const x = Math.min(1, (t - t0) / 1100); b.textContent = Math.round(fin * (1 - Math.pow(1 - x, 3))) + suf; if (x < 1) requestAnimationFrame(paso); };
+    requestAnimationFrame(paso);
+  });
+}
+/* Cronómetro de la actividad: se guarda en la sesión para que también lo vean los celulares. */
+function tic() {
+  const el = $('#reloj'); if (!el) return;
+  if (!S.tfin) { el.textContent = ''; el.className = 'reloj'; return; }
+  const q = Math.round((S.tfin - Date.now()) / 1000);
+  el.textContent = q > 0 ? `${Math.floor(q / 60)}:${String(q % 60).padStart(2, '0')}` : 'Tiempo';
+  el.className = `reloj${q <= 60 ? ' poco' : ''}${q <= 0 ? ' fin' : ''}`;
+}
+setInterval(() => S && tic(), 1000);
 function guiaTxt(P) {
   if (P.t === 'dia') return `Diapositiva: «${P.titulo}». Toca «Siguiente» para encender cada parte y coméntala con el colectivo antes de avanzar.`;
   return { abiertas: 'Pide que contesten en su celular. A la derecha ves quién ya contestó. Cambia de pregunta con los botones para comentar las respuestas del muro.',
@@ -77,6 +103,7 @@ function guiaTxt(P) {
     compromiso: 'Cada quien escribe su compromiso. Al final imprime el producto con el botón «Producto».' }[P.tipo] || '';
 }
 function diaHTML(P, r) {
+  if (P.fig) return `<h2>${esc(P.titulo)}</h2><div class="dg"><div class="fig">${P.fig}</div><div class="tjs">${P.partes.map(h => `<div data-r>${h}</div>`).join('')}</div></div>${P.nota ? `<p class="mini">${esc(P.nota)}</p>` : ''}`;
   const partes = P.partes.map((h, n) => `<div data-r class="${n < r ? 'on' : ''}">${h}</div>`).join('');
   if (P.nota === 'portada') return `<div class="portada"><div><h1>${esc(P.titulo)}</h1>${partes}</div><div class="qr" id="qr-port"></div></div>`;
   return `<h2>${esc(P.titulo)}</h2>${partes}${P.nota && P.nota !== 'cierre' ? `<p class="mini">${esc(P.nota)}</p>` : ''}`;
@@ -115,15 +142,18 @@ V.juego = P => {
   if (i >= P.casos.length) {
     const tot = P.casos.map((c, n) => { const L = resp(P.id, n); return { c, total: L.length, bien: L.filter(r => r.v === c[1]).length }; });
     const T = tot.reduce((s, x) => s + x.total, 0), B = tot.reduce((s, x) => s + x.bien, 0);
-    const peores = tot.filter(x => x.total).sort((a, b) => a.bien / a.total - b.bien / b.total).slice(0, 3);
-    return `<p class="grande">El colectivo acertó <b>${T ? Math.round(B / T * 100) : 0} %</b> de ${T} respuestas.</p><h3>Las que más costaron</h3>
-      ${peores.map(x => `<div class="caja"><b>${Math.round(x.bien / x.total * 100)} % de aciertos</b>${esc(x.c[0])}<br><span class="mini">Respuesta: ${OPS.find(o => o[0] === x.c[1])[1]}. ${esc(x.c[2])}</span></div>`).join('')}
+    const peores = tot.filter(x => x.total).sort((a, b) => a.bien / a.total - b.bien / b.total).slice(0, P.compara ? 2 : 3);
+    const ahora = T ? Math.round(B / T * 100) : 0, antes = P.compara ? aciertos(P.compara) : null;
+    const comp = P.compara ? `<div class="compara"><div><span>Al inicio</span><div class="cb"><i style="--w:${antes}%;--c:var(--tinta2)"></i></div><b>${antes} %</b></div><div><span>Al final</span><div class="cb"><i style="--w:${ahora}%;--c:var(--dua)"></i></div><b>${ahora} %</b></div></div>
+      <p class="grande">${ahora > antes ? `¡Subimos ${ahora - antes} puntos! Eso es lo que aprendimos hoy.` : ahora === antes ? 'Nos quedamos igual: vale la pena repasar los casos que más costaron.' : 'Bajamos un poco: repasemos los casos que más costaron.'}</p>` : `<p class="grande">El colectivo acertó <b>${ahora} %</b> de ${T} respuestas.</p>`;
+    return `${comp}<h3>Las que más costaron</h3>
+      ${peores.map(x => `<div class="caja"><b>${Math.round(x.bien / x.total * 100)} % de aciertos</b>${esc(x.c[0])}<br><span class="mini">Respuesta: ${opsDe(P).find(o => o[0] === x.c[1])[1]}. ${esc(x.c[2])}</span></div>`).join('')}
       <div class="fila"><button class="btn linea" data-jant>Volver a la última situación</button></div>`;
   }
   const c = P.casos[i], L = resp(P.id, i), n = L.length || 1;
   return `<p class="mini">Situación ${i + 1} de ${P.casos.length}</p><p class="grande" style="font-size:34px;font-weight:700">${esc(c[0])}</p>
-    ${OPS.map(([k, t]) => { const v = L.filter(r => r.v === k).length; return `<div class="barra-v${S.rev && k === c[1] ? ' correcta' : ''}"><span>${S.rev && k === c[1] ? '✅ ' : ''}${t}</span><span class="b"><span style="width:${S.rev ? v / n * 100 : 0}%"></span></span><b>${S.rev ? v : ''}</b></div>`; }).join('')}
-    ${S.rev ? `<div class="caja ok"><b>${OPS.find(o => o[0] === c[1])[1]}</b>${esc(c[2])}</div>` : `<p class="mini">${L.length} respuestas. Los votos se muestran al revelar.</p>`}
+    ${opsDe(P).map(([k, t]) => { const v = L.filter(r => r.v === k).length; return `<div class="barra-v${S.rev && k === c[1] ? ' correcta' : ''}"><span>${S.rev && k === c[1] ? '✅ ' : ''}${t}</span><span class="b"><span style="width:${S.rev ? v / n * 100 : 0}%"></span></span><b>${S.rev ? v : ''}</b></div>`; }).join('')}
+    ${S.rev ? `<div class="caja ok"><b>${opsDe(P).find(o => o[0] === c[1])[1]}</b>${esc(c[2])}</div>` : `<p class="mini">${L.length} respuestas. Los votos se muestran al revelar.</p>`}
     <div class="fila" style="margin-top:12px">${S.rev ? `<button class="btn" data-jsig>${i + 1 < P.casos.length ? 'Siguiente situación' : 'Ver resultados'}</button>` : '<button class="btn" data-rev>Revelar respuesta</button>'}${i > 0 ? '<button class="btn linea" data-jant>Situación anterior</button>' : ''}</div>`;
 };
 V.jornada = P => {
@@ -143,9 +173,18 @@ V.priorizar = () => {
     <tbody>${filas.map((f, k) => `<tr><td>${k === 0 && f.tot ? '🥇 ' : ''}${esc(f.b)}</td>${f.prom.map(x => `<td>${x ? x.toFixed(1) : ''}</td>`).join('')}<td><b style="font-size:22px">${f.tot ? f.tot.toFixed(1) : ''}</b></td></tr>`).join('')}</tbody></table><p class="mini">Promedio de ${n} maestros, de uno a cinco por criterio.</p>`;
 };
 V.pasos = P => {
-  const L = resp(P.id).map(r => parse(r.v) || {}).filter(o => o.ajuste);
-  return `<p class="mini">${L.length} ajustes diseñados</p><div class="muro" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))">${L.map(o => `<div><b>${esc(o.asig || 'Asignatura')}</b><br><span class="mini">Barrera:</span> ${esc(o.barrera || '')}<br><span class="mini">Ajuste:</span> <b>${esc(o.ajuste)}</b><br><span class="mini">Seguimiento:</span> ${esc(o.seguimiento || '')}</div>`).join('')}</div>`;
+  const L = resp(P.id).map(r => ({ id: r.id, o: parse(r.v) || {} })).filter(x => x.o.ajuste), D = S.dest || [];
+  if (S.gal) {
+    const G = L.filter(x => D.includes(x.id));
+    return `<p class="mini">Galería: ${G.length} ajustes sin nombre. Para cada uno, el colectivo decide si cumple; toca cada criterio para marcarlo.</p><div class="galeria">${G.map((x, n) => `<div><h4>Ajuste ${n + 1} · ${esc(x.o.asig || 'Asignatura')}</h4>
+      ${SEIS.map(s => x.o[s[0]] ? `<p><span class="mini">${s[1]}:</span> ${s[0] === 'ajuste' ? `<b>${esc(x.o[s[0]])}</b>` : esc(x.o[s[0]])}</p>` : '').join('')}
+      <div class="crits">${GALERIA.map((g, k) => { const v = (chk[x.id] || [])[k] || 0; return `<button type="button" data-chk="${esc(x.id)}" data-k="${k}" class="v${v}">${v === 1 ? '✓ ' : v === 2 ? '✗ ' : ''}${g}</button>`; }).join('')}</div></div>`).join('') || '<p class="grande">Primero toca en el muro los ajustes que quieras comentar.</p>'}</div>
+      <div class="fila" style="margin-top:12px"><button class="btn linea" data-gal>Volver al muro</button></div>`;
+  }
+  return `<div class="fila"><p class="mini" style="margin:0">${L.length} ajustes diseñados. Toca hasta cuatro para comentarlos en la galería.</p><button class="btn chico" data-gal ${D.length ? '' : 'disabled'}>Ver galería (${D.length})</button></div>
+    <div class="muro" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))">${L.map(({ id, o }) => `<div data-dest="${esc(id)}" class="${D.includes(id) ? 'sel' : ''}" style="cursor:pointer"><b>${esc(o.asig || 'Asignatura')}</b><br><span class="mini">Barrera:</span> ${esc(o.barrera || '')}<br><span class="mini">Ajuste:</span> <b>${esc(o.ajuste)}</b><br><span class="mini">Seguimiento:</span> ${esc(o.seguimiento || '')}</div>`).join('')}</div>`;
 };
+const aciertos = id => { const J = PASOS.find(p => p.id === id); if (!J) return 0; let T = 0, B = 0; J.casos.forEach((c, n) => { const L = resp(id, n); T += L.length; B += L.filter(r => r.v === c[1]).length; }); return T ? Math.round(B / T * 100) : 0; };
 V.compromiso = P => {
   const L = resp(P.id).map(r => parse(r.v) || {}).filter(o => o.txt);
   return `<p class="mini">${L.length} compromisos</p><div class="muro">${L.map(o => `<div>${esc(o.txt)}<br><span class="mini">${esc(o.asig || '')}</span></div>`).join('')}</div>`;
@@ -157,15 +196,19 @@ function avanzar(d) {
   if (P.t === 'dia' && d > 0 && (S.r || 0) < P.partes.length) return mover({ r: (S.r || 0) + 1 });
   if (P.t === 'dia' && d < 0 && (S.r || 0) > 0) return mover({ r: (S.r || 0) - 1 });
   const n = k + d; if (n < 0 || n >= PASOS.length) return;
-  verQ = 0; mover({ k: n, r: d > 0 ? 0 : PASOS[n].t === 'dia' ? PASOS[n].partes.length : 0 });
+  verQ = 0; mover({ k: n, r: d > 0 ? 0 : PASOS[n].t === 'dia' ? PASOS[n].partes.length : 0, tfin: null, gal: false, i: 0, rev: false });
 }
 $('#sig').onclick = () => S && avanzar(1);
 $('#ant').onclick = () => S && avanzar(-1);
 $('#guia').onclick = () => { guia = !guia; $('#guia').textContent = guia ? 'Ocultar guía' : 'Ver guía'; pintar(); };
 addEventListener('keydown', e => { if (!S || /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) return; if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); avanzar(1); } if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); avanzar(-1); } });
 document.addEventListener('click', e => {
-  const b = e.target.closest('button,[data-bsel]'); if (!b || !S) return;
+  const b = e.target.closest('button,[data-bsel],[data-dest]'); if (!b || !S) return;
   if (b.dataset.q) { verQ = +b.dataset.q; pintarVivo(); }
+  else if (b.dataset.crono !== undefined) { const P = PASOS[S.k || 0]; mover({ tfin: S.tfin ? null : Date.now() + (P.min || 5) * 60000 }); }
+  else if (b.dataset.dest !== undefined) { const t = b.dataset.dest, D = [...(S.dest || [])], x = D.indexOf(t); if (x >= 0) D.splice(x, 1); else if (D.length < 4) D.push(t); mover({ dest: D }); }
+  else if (b.dataset.gal !== undefined) mover({ gal: !S.gal });
+  else if (b.dataset.chk !== undefined) { const a = chk[b.dataset.chk] ||= []; a[+b.dataset.k] = ((a[+b.dataset.k] || 0) + 1) % 3; pintarVivo(); }
   else if (b.dataset.rev !== undefined) mover({ rev: true });
   else if (b.dataset.jsig !== undefined) mover({ i: (S.i || 0) + 1, rev: false });
   else if (b.dataset.jant !== undefined) mover({ i: Math.max(0, (S.i || 0) - 1), rev: true });
@@ -182,8 +225,7 @@ function producto() {
   const acts = PASOS.filter(p => p.t === 'act');
   const part = n => acts.filter(a => R.some(r => r.p === n && r.act === a.id)).length;
   const lista = (act, f) => resp(act).map(r => parse(r.v) || {}).map(f).filter(Boolean);
-  const J = PASOS.find(p => p.tipo === 'juego'), jt = J ? J.casos.map((c, n) => { const L = resp('juego', n); return [L.length, L.filter(r => r.v === c[1]).length]; }) : [];
-  const jT = jt.reduce((s, x) => s + x[0], 0), jB = jt.reduce((s, x) => s + x[1], 0);
+
   const abiertas = P => P.preguntas.map((q, n) => `<h3 style="font-size:10.5pt;margin:6pt 0 2pt">${esc(q[0])}</h3><ul style="margin:0 0 4pt">${lista(P.id, o => o[`q${n}`] && `<li>${esc(o[`q${n}`])}</li>`).join('') || '<li>Sin respuestas.</li>'}</ul>`).join('');
   const ref = PASOS.find(p => p.id === 'refl'), ana = PASOS.find(p => p.id === 'analisis');
   const comp = resp('compromiso').map(r => ({ p: r.p, o: parse(r.v) || {} })).filter(x => x.o.txt).sort((a, b) => a.p.localeCompare(b.p, 'es'));
@@ -191,7 +233,7 @@ function producto() {
   <h1>Consejo Técnico Escolar · Ajustes razonables en la atención de niñas, niños y adolescentes con discapacidad y aptitudes sobresalientes</h1>
   <p>Fecha: ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}. Expone: campo formativo de Lenguajes. Participaron ${nombres.length} docentes desde su celular.</p>
   <h2>1. Participación</h2><table><thead><tr><th>Docente</th><th>Actividades contestadas (de ${acts.length})</th></tr></thead><tbody>${nombres.map(n => `<tr><td>${esc(n)}</td><td>${part(n)}</td></tr>`).join('')}</tbody></table>
-  <h2>2. Juego de conceptos</h2><p>El colectivo acertó ${jT ? Math.round(jB / jT * 100) : 0} % de ${jT} respuestas.</p>
+  <h2>2. Juegos</h2><table><tbody><tr><td>Conceptos, al inicio de la sesión</td><td style="width:22%">${aciertos('juego')} % de aciertos</td></tr><tr><td>Tipos de barrera</td><td>${aciertos('barr')} % de aciertos</td></tr><tr><td>Juego de salida</td><td>${aciertos('salida')} % de aciertos</td></tr></tbody></table>
   <h2>3. Reflexión inicial</h2>${ref ? abiertas(ref) : ''}
   <h2>4. Análisis de nuestros datos</h2>${ana ? abiertas(ana) : ''}
   <h2>5. La jornada de ${CASO.nombre}: barreras identificadas</h2><table><tbody>${MOMENTOS.map((m, k) => `<tr><th style="width:24%">${m}</th><td>${lista('jornada', o => o[`m${k}`] && esc(o[`m${k}`])).join('<br>')}</td></tr>`).join('')}</tbody></table>
