@@ -156,6 +156,7 @@ async function misReportes() {
       <div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap"><span><b>${esc(i.alumno)}</b> <small>· ${i.grado}.° ${esc(i.grupo)} · ${fLarga(i.fecha)}</small></span><span class="envio ${i.estado === 'atendido' ? 'ok' : 'pend'}">${EST[i.estado] || 'Pendiente'}</span></div>
       <p style="margin:.3rem 0">${esc(i.hechos)}</p>
       ${i.capturo ? '<small style="display:block;color:#6A5C4C">Lo registró la Subdirección con lo que usted le informó.</small>' : ''}
+      ${i.avisoTutor ? `<small style="display:block">👩‍🏫 Se turnó y se avisó al tutor del grupo el ${fLarga(fLoc(i.avisoTutor))}.</small>` : ''}
       ${i.avisoFam ? `<small style="display:block">📲 La escuela informó a la familia por WhatsApp el ${fLarga(fLoc(i.avisoFam))}.</small>` : !i.cita && !i.confidencial ? '<small style="display:block;color:#6A5C4C">⏳ La escuela todavía no informa a la familia.</small>' : ''}
       ${visibles(i).length ? `<small>${visibles(i).map(a => '• ' + esc(anot(a))).join('<br>')}</small>` : ''}
       ${citaTxt(i.cita)}

@@ -638,3 +638,27 @@ body.eia-presentando{overflow:hidden}
 .eia-lista>div{background:var(--papel);border-radius:14px;padding:20px 24px;max-width:640px;width:92%;max-height:80vh;overflow:auto}
 .eia-lista ol{list-style:none;padding:0;margin:.4rem 0 1rem}.eia-lista li{display:grid;grid-template-columns:2.6rem 1fr auto;align-items:center;gap:.6rem;text-align:left;padding:.35rem 0;border-bottom:1px solid var(--linea)}
 .eia-lista li span{display:flex;gap:3px}
+
+/* Convivencia: sub-pestañas, avisos con palomita y bandeja de Hoy */
+.cv-subnav{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1rem}
+.cv-subnav button{border:1.5px solid var(--linea);background:var(--papel);border-radius:999px;padding:.45rem 1rem;cursor:pointer;font-weight:600;font-size:.95rem}
+.cv-subnav button[aria-pressed=true]{background:var(--noche);border-color:var(--noche);color:#fff}
+.avisos-inc{display:flex;flex-wrap:wrap;gap:.35rem;margin:.45rem 0 0}
+.aviso-pill{border-radius:999px;padding:.35rem .8rem;font-size:.88rem;font-weight:600;border:1.5px solid;cursor:pointer;font-family:inherit;line-height:1.2}
+.aviso-pill.ok{background:#E3F2E6;border-color:#9CCBA8;color:#1E5A32}
+.aviso-pill.no{background:#FFF4D6;border-color:#E0B321;color:#5A4200}
+.aviso-pill.no.opc{background:transparent;border-color:var(--linea);color:var(--tinta2);font-weight:500}
+.aviso-pill.na{background:#EEE7DA;border-color:#EEE7DA;color:#5E564B;cursor:default}
+.hoy-res button{border:0;background:inherit;cursor:pointer;font:inherit;color:inherit;text-align:inherit;padding:inherit;border-radius:inherit}
+.hoy-res button:hover{outline:2px solid var(--oro)}
+.hoy-inc{border:1px solid var(--linea);border-left:6px solid #C8403A;border-radius:12px;padding:.6rem .8rem;margin:.5rem 0;background:#fff}
+.hoy-inc.amarillo{border-left-color:#E0B321}
+.hoy-inc.verde{border-left-color:#2E8B57;background:#F3FAF5}
+.hoy-inc.grave{box-shadow:inset 0 0 0 1px #F2C4BE}
+.hoy-cab{display:flex;flex-wrap:wrap;gap:.3rem;align-items:baseline}
+.hoy-cab .envio{margin-left:auto}
+.enlace-al{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer}
+.hoy-tipos{font-size:.9rem;color:var(--tinta2);margin:.15rem 0}
+.hoy-falta{margin:.25rem 0 0;font-weight:700;color:#8A2A1D;font-size:.92rem}
+.hoy-listos summary{cursor:pointer;list-style:none}
+.hoy-listos summary::-webkit-details-marker{display:none}
