@@ -3262,7 +3262,7 @@ async function tabResultadosEIA() {
   if (!cvCargar('cv-eia')) return;
   const panel = $('#panel'); panel.innerHTML = '<div class="tarjeta"><p class="cargando">Cargando resultados…</p></div>';
   try {
-    const { tabEIA } = await import('./eia.js?v=2026112702');
+    const { tabEIA } = await import('./eia.js?v=2026112703');
     const porNombre = {};
     (incA.lista || []).forEach(i => { const k = normal(nomInc(i)).replace(/\s+/g, ' ') + '|' + grpInc(i); porNombre[k] = (porNombre[k] || 0) + 1; });
     const act = estado.alumnos.filter(a => a.estado === 'activo'), matricula = {};

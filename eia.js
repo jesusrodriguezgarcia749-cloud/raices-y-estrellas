@@ -426,8 +426,8 @@ function diapositivas() {
       <div class="eia-prop" data-p="2" style="--c:#E8893A"><span>E</span><b>Barrera estructural</b><p>Treinta números de lista sin resultado. Faltar a la evaluación también puede ser una barrera para participar: trabajo, traslado, avisos que no llegan.</p></div>
       <div class="eia-prop" data-p="3" style="--c:#7A4FB0"><span>A</span><b>Barrera actitudinal</b><p>«Tercero ya no tiene remedio.» Si lo creemos, dejamos de intentarlo. La generación de segundo demuestra que en un año sí se puede avanzar.</p></div>
       <div class="eia-prop" data-p="4" style="--c:#16213F"><span>N</span><b>Barrera en la evaluación</b><p>Si cada grupo lee la rúbrica a su manera, el resultado no refleja lo que el alumno sabe. Unificar criterios también es quitar una barrera.</p></div></div>
-    <div class="eia-dos" style="margin-top:14px"><p class="eia-nota" data-p="5"><b>Diseño Universal para todo el grupo:</b> la fórmula «Yo pienso que… porque… por ejemplo…», textos discontinuos y problemas con datos reales, planeados desde el inicio para todos.</p>
-    <p class="eia-nota" data-p="6"><b>Ajuste razonable para cada alumno prioritario:</b> barrera concreta, qué cambia, cuándo, quién lo hace y cómo sabremos que funcionó. No se trata de diversificar todo todos los días.</p></div>` });
+    <div class="eia-dos" style="margin-top:14px"><p class="eia-nota" data-p="5"><b>Diseño Universal para todo el grupo:</b> «Yo pienso que… porque…», textos discontinuos y datos reales, para todos desde el inicio.</p>
+    <p class="eia-nota" data-p="6"><b>Ajuste razonable para cada alumno prioritario:</b> barrera, qué cambia, quién lo hace y cómo sabremos que funcionó.</p></div>` });
 
   const PROP = [
     ['Argumentar en todas las materias', '«Yo pienso que… porque… por ejemplo…» y una rúbrica corta común.', CC.LEN],
@@ -444,6 +444,34 @@ function diapositivas() {
     <div data-p="2"><span>2</span><p>¿Qué acuerdo concreto podemos tomar hoy como academia para la próxima semana?</p></div>
     <div data-p="3"><span>3</span><p>¿Cómo vamos a saber, en la siguiente aplicación, si funcionó?</p></div>
     <div data-p="4"><span>4</span><p>¿Qué barrera, de nosotros y no del alumno, explica el resultado que más me preocupa de mis grupos?</p></div></div>` });
+
+  /* ---- Otros asuntos: Mochila por la Paz y diciembre ---- */
+  S.push({ pasos: 0, html: () => `<div class="eia-portada"><p class="eia-k">Consejo Técnico Escolar · Otros asuntos</p><h1>Mochila por la Paz y nuestro diciembre</h1><p class="eia-sub">Protocolo estatal y fechas de lectura del mes</p></div>` });
+
+  S.push({ pasos: 5, html: () => `<h2>Protocolo Mochila por la Paz</h2><div class="eia-dos">
+    <div class="eia-flujo" style="gap:12px"><div class="eia-caja" data-p="1"><b>Es oficial</b><span>Publicado en el Periódico Oficial del Estado el 8 de septiembre de 2026</span></div><div class="eia-caja" data-p="2"><b>Es voluntario</b><span>Solo con la carta firmada de la familia y la del alumno en lectura fácil</span></div><div class="eia-caja" data-p="3"><b>Revisan los padres del Comité</b><span>Docentes y dirección observan; no revisan</span></div><div class="eia-caja" data-p="4"><b>Con respeto a la intimidad</b><span>Sin tocar al alumno, sin grabar, sin exhibir</span></div></div>
+    <div class="eia-ts">${tarjeta(1, 'Para qué', '<p>Prevenir riesgos y proteger la integridad física y emocional de niñas, niños y adolescentes, con enfoque de derechos y cultura de paz.</p><p class="eia-dato">Expide la Secretaría de Educación del Estado.</p>', '#16213F')}
+    ${tarjeta(2, 'Consentimiento', '<p>Carta de la madre, padre o tutor (anexo tres) y carta de lectura fácil para el alumno (anexo tres bis).</p><p>Si la familia no autoriza, el alumno <b>no tiene ninguna consecuencia</b>.</p>', '#2E8B57')}
+    ${tarjeta(3, 'Cómo se hace', '<p>Por grupo, de forma rotativa, no más de una vez al mes. En un espacio privado del salón: el alumno pasa solo y muestra su mochila; él mismo coloca lo que trae en una charola.</p><p class="eia-dato">El maestro es observador, no participa en la revisión.</p>', '#E8893A')}
+    ${tarjeta(4, 'Lo que está prohibido', '<p>Revisar el cuerpo, tocar bolsillos o ropa, grabar o fotografiar, y usarlo para quitar celulares, maquillaje o audífonos.</p>', '#C8403A')}
+    ${tarjeta(5, 'Si aparece algo peligroso', '<p>No tocarlo, llevar la mochila a la dirección, avisar a la familia y, si es un arma o una sustancia, llamar al nueve uno uno. Se levanta acta y se canaliza al alumno a apoyo.</p><p><b>El alumno sigue en clase</b>: nunca se le niega el derecho a la educación.</p>', '#7A4FB0')}</div></div>` });
+
+  S.push({ pasos: 4, html: () => `<h2>Mochila por la Paz: lo que nos toca</h2><div class="eia-props dos">
+    <div class="eia-prop" data-p="1" style="--c:#16213F"><span>1</span><b>Reunión con familias</b><p>Convocatoria (anexo uno) para informar el protocolo y formar el Comité: presidencia, secretaría técnica a cargo de la dirección, y vocales.</p></div>
+    <div class="eia-prop" data-p="2" style="--c:#2E8B57"><span>2</span><b>Cartas de consentimiento</b><p>Recabar la carta de cada familia y la de cada alumno. El Comité identifica quién no autorizó.</p></div>
+    <div class="eia-prop" data-p="3" style="--c:#E8893A"><span>3</span><b>Calendario y campaña</b><p>El Comité fija las fechas y se avisa a las familias. Antes, carteles sobre cuidado, honestidad y objetos no permitidos (anexo siete).</p></div>
+    <div class="eia-prop" data-p="4" style="--c:#C8403A"><span>4</span><b>Evidencias a la SEDUC</b><p>El oficio del 13 de noviembre pide fotos y documentos de cada revisión en la carpeta «Evidencias del Protocolo Mochila por la Paz».</p></div></div>
+    <p class="eia-nota" style="margin-top:14px">Directorio de emergencias visible en la escuela (anexo ocho): nueve uno uno, cero ocho nueve y Protección Civil.</p>` });
+
+  const DIC = [
+    ['Lunes', 'Lunes de lectura', 'Unos minutos cada lunes para leer y hacer una pausa frente a las pantallas, como pidió el secretario de Educación.', '#2E8B57'],
+    ['10 dic', 'Maratón de Lectura y Artes', 'Por el Día Internacional de los Derechos Humanos. Cada grupo prepara su participación y sus evidencias.', '#2F6FD1'],
+    ['10 dic', 'Concurso de Comprensión Lectora', 'Somos la sede de la zona. Participa un alumno por turno: hay que elegirlo y prepararlo esta semana.', '#C8403A'],
+    ['15 dic', 'Concurso de Oratoria', 'En la Secundaria General tres. Un alumno por turno.', '#E8893A'],
+    ['18 dic', 'Folclore, villancicos y pastorelas', 'Último día de clases antes de vacaciones, en cada escuela.', '#7A4FB0']];
+  S.push({ pasos: DIC.length, html: () => `<h2>Diciembre: la lectura en el centro</h2><div class="eia-dos">
+    <div class="eia-flujo">${DIC.map(([f, t], k) => `<div class="eia-caja" data-p="${k + 1}" style="border-left:10px solid ${DIC[k][3]}"><b>${f} · ${t}</b></div>`).join('')}</div>
+    <div class="eia-ts">${DIC.map(([f, t, d, c], k) => tarjeta(k + 1, t, `<p>${d}</p>${k === 2 ? '<p class="eia-dato">Es la oportunidad de usar lo que trabajamos en Raíces y Estrellas.</p>' : ''}`, c)).join('')}</div></div>` });
 
   S.push({ pasos: 0, html: () => `<div class="eia-portada fin"><h1>Gracias</h1><p class="eia-sub">Los resultados por grupo, por alumno y por aprendizaje están en la plataforma, en Convivencia y familias, pestaña «Resultados EIA».</p>
     <p class="eia-k">Análisis elaborado con apoyo de inteligencia artificial a partir de los reportes oficiales de la SEP.</p></div>` });

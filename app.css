@@ -697,3 +697,10 @@ body.eia-presentando{overflow:hidden}
 .eia-meta-n{font-size:20px;color:var(--tinta2)}
 .eia-meta-n em{font:800 36px var(--serif);font-style:normal;color:#C8403A}.eia-meta-n em.ok{color:#2E8B57}
 .eia-meta-n i{font-style:normal;margin:0 8px;color:var(--oro)}
+
+/* Letra más grande en la presentación EIA (proyector) */
+.eia-pres .eia-nota{font-size:20px}
+.eia-pres .eia-t h3{font-size:30px}
+.eia-pres .eia-t p{font-size:23px}
+.eia-pres .eia-t .eia-dato{font-size:19px}
+.eia-pres .eia-caja span{font-size:20px}
